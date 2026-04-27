@@ -1,0 +1,47 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider / VS / VS Code
+.idea/
+.vs/
+.vscode/
+*.swp
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Test / coverage output
+TestResults/
+coverage*
+*.coverage
+*.coveragexml
+
+# Local config and secrets (must never be committed)
+appsettings.Development.json
+appsettings.Local.json
+*.local.json
+secrets/
+
+# Local working data
+cache/
+data/
+*.jvd
+*.bin
+*.dump
+*.sql.gz
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
