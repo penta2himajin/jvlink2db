@@ -37,15 +37,18 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build -c Release -r win-x86 --self-contained false --no-restore
+        run: dotnet build -c Release --no-restore
 
       - name: Test
-        run: dotnet test -c Release -r win-x86 --no-build --verbosity normal
+        run: dotnet test -c Release --no-build --verbosity normal
+
+      - name: Publish CLI (win-x86)
+        run: dotnet publish src/Jvlink2Db.Cli/Jvlink2Db.Cli.csproj -c Release -r win-x86 --self-contained false -o publish/cli
 
       - name: Smoke test --help
         shell: pwsh
         run: |
-          $exe = Join-Path "src/Jvlink2Db.Cli/bin/Release/net8.0/win-x86" "jvlink2db.exe"
+          $exe = "publish/cli/jvlink2db.exe"
           if (-not (Test-Path $exe)) { throw "jvlink2db.exe not found at $exe" }
           & $exe --help
           if ($LASTEXITCODE -ne 0) { throw "jvlink2db --help exited with $LASTEXITCODE" }
