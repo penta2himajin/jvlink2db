@@ -33,6 +33,14 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
+      - name: Install .NET 8 runtime (x86)
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'dotnet-x86'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://dot.net/v1/dotnet-install.ps1' -OutFile dotnet-install.ps1
+          ./dotnet-install.ps1 -Channel 8.0 -Architecture x86 -Runtime dotnet -InstallDir $installDir -NoPath
+          "DOTNET_ROOT_X86=$installDir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
       - name: Restore
         run: dotnet restore
 
