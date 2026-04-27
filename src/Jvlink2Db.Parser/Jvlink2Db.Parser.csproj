@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jvlink2Db.Parser</RootNamespace>
+    <AssemblyName>Jvlink2Db.Parser</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jvlink2Db.Core\Jvlink2Db.Core.csproj" />
+  </ItemGroup>
+
+</Project>

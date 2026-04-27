@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jvlink2Db.Pipeline</RootNamespace>
+    <AssemblyName>Jvlink2Db.Pipeline</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jvlink2Db.Core\Jvlink2Db.Core.csproj" />
+    <ProjectReference Include="..\Jvlink2Db.Jvlink\Jvlink2Db.Jvlink.csproj" />
+    <ProjectReference Include="..\Jvlink2Db.Parser\Jvlink2Db.Parser.csproj" />
+    <ProjectReference Include="..\Jvlink2Db.Db.Postgres\Jvlink2Db.Db.Postgres.csproj" />
+  </ItemGroup>
+
+</Project>
