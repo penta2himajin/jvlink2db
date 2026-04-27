@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test (Windows)
+    runs-on: windows-latest
+
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release -r win-x86 --self-contained false --no-restore
+
+      - name: Test
+        run: dotnet test -c Release -r win-x86 --no-build --verbosity normal
+
+      - name: Smoke test --help
+        shell: pwsh
+        run: |
+          $exe = Join-Path "src/Jvlink2Db.Cli/bin/Release/net8.0/win-x86" "jvlink2db.exe"
+          if (-not (Test-Path $exe)) { throw "jvlink2db.exe not found at $exe" }
+          & $exe --help
+          if ($LASTEXITCODE -ne 0) { throw "jvlink2db --help exited with $LASTEXITCODE" }

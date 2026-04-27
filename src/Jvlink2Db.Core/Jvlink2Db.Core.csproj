@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Jvlink2Db.Core</RootNamespace>
+    <AssemblyName>Jvlink2Db.Core</AssemblyName>
+  </PropertyGroup>
+
+</Project>
