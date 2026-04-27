@@ -12,6 +12,7 @@ Design and specification documents for jvlink2db.
 | [05-pipeline-modes.md](./05-pipeline-modes.md) | Acquisition modes |
 | [06-error-handling.md](./06-error-handling.md) | Return code handling |
 | [07-development.md](./07-development.md) | Build, test, and contribution |
+| [08-roadmap.md](./08-roadmap.md) | Implementation phases and milestones |
 
 All specifications here are derived from the official JRA-VAN Data Lab. SDK
 Ver 4.9.0.2, in particular:
