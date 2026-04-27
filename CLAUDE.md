@@ -25,13 +25,42 @@ schema/                   hand-maintained DDL, one file per record type
 docs/                     design specifications
 ```
 
+## 開発環境セットアップ
+
+### .NET SDK (x64) — mise 管理
+
+`mise.toml` で .NET 8 SDK を pin している。初回:
+
+```bash
+mise install
+```
+
+`[env]` で `DOTNET_ROOT_X86` も合わせて立てているので、後段の x86 ランタイ
+ムが置かれていれば apphost が自動的に解決する。
+
+### x86 .NET 8 ランタイム — 一度きりの bootstrap
+
+`Jvlink2Db.Cli` は `win-x86` で publish するので、x86 .NET 8 ランタイムが
+必要。mise の dotnet plugin は x64 SDK しか入れないため、別途ユーザーローカ
+ルに配置する:
+
+```powershell
+$installDir = Join-Path $env:USERPROFILE '.dotnet-x86'
+$script = Join-Path $env:TEMP 'dotnet-install.ps1'
+Invoke-WebRequest -UseBasicParsing 'https://dot.net/v1/dotnet-install.ps1' -OutFile $script
+& $script -Channel 8.0 -Architecture x86 -Runtime dotnet -InstallDir $installDir -NoPath
+```
+
+`%USERPROFILE%\.dotnet-x86` 以外に置く場合は `mise.toml` の
+`DOTNET_ROOT_X86` も合わせて変更すること。
+
 ## ビルド・テスト
 
 ```bash
-dotnet restore
-dotnet build -c Release
-dotnet test
-dotnet publish src/Jvlink2Db.Cli -c Release -r win-x86 --self-contained false
+mise exec -- dotnet restore
+mise exec -- dotnet build -c Release
+mise exec -- dotnet test
+mise exec -- dotnet publish src/Jvlink2Db.Cli -c Release -r win-x86 --self-contained false
 ```
 
 Library projects build AnyCPU; only `Jvlink2Db.Cli` needs the `win-x86`
@@ -39,9 +68,7 @@ runtime identifier so it runs as a 32-bit Windows process at runtime to
 host JV-Link (a 32-bit COM component). A 64-bit CLI passes `dotnet
 build` but fails at runtime when JV-Link is invoked. Solution-level
 `-r win-x86` is rejected by the .NET 8 SDK (`NETSDK1134`), so the RID
-is applied at publish time on the CLI project only. The
-framework-dependent CLI requires an x86 .NET 8 runtime installed
-alongside the usual x64 install.
+is applied at publish time on the CLI project only.
 
 ## 開発原則: TDD (Red→Green→Refactor)
 
