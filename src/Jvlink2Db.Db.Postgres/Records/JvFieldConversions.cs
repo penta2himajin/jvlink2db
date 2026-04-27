@@ -4,11 +4,12 @@ using System.Globalization;
 namespace Jvlink2Db.Db.Postgres.Records;
 
 /// <summary>
-/// Converts the right-trimmed string fields on <see cref="Core.Records.Ra"/>
-/// into the typed values that <c>jv.ra</c> expects. Empty / spaces-only
-/// inputs and the all-zero date sentinel become <c>null</c>.
+/// Converts the right-trimmed string fields produced by the parser
+/// into the typed values that the database layer expects. Empty /
+/// spaces-only inputs and the all-zero date sentinel become
+/// <c>null</c>. Used by every per-record COPY writer.
 /// </summary>
-internal static class RaConversions
+internal static class JvFieldConversions
 {
     public static string? AsText(string value) =>
         string.IsNullOrEmpty(value) ? null : value;
@@ -59,6 +60,18 @@ internal static class RaConversions
             : null;
     }
 
+    public static long? AsLong(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : null;
+    }
+
     public static short?[] AsShortArray(string[] values)
     {
         var result = new short?[values.Length];
@@ -76,6 +89,17 @@ internal static class RaConversions
         for (var i = 0; i < values.Length; i++)
         {
             result[i] = AsInt(values[i]);
+        }
+
+        return result;
+    }
+
+    public static long?[] AsLongArray(string[] values)
+    {
+        var result = new long?[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            result[i] = AsLong(values[i]);
         }
 
         return result;

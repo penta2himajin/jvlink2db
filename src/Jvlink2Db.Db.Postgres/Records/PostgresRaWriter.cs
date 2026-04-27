@@ -1,87 +1,21 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Jvlink2Db.Core.Persistence;
 using Jvlink2Db.Core.Records;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace Jvlink2Db.Db.Postgres.Records;
 
 /// <summary>
-/// Idempotent bulk writer for <see cref="Ra"/> records. Uses the
-/// staging-table pattern from docs/04-database-schema.md: COPY the
-/// batch into a TEMP table, then dedupe by primary key (last record
-/// wins, in JV-Link's emit order) and merge into <c>jv.ra</c> with
-/// <c>ON CONFLICT ... DO UPDATE</c>.
+/// Idempotent bulk writer for <see cref="Ra"/> records.
 /// </summary>
-public sealed class PostgresRaWriter : IBulkWriter<Ra>
+public sealed class PostgresRaWriter : PostgresBulkWriter<Ra>
 {
-    private readonly NpgsqlDataSource _dataSource;
-    private readonly string _schemaName;
-
     public PostgresRaWriter(NpgsqlDataSource dataSource, string? schemaName = null)
+        : base(dataSource, schemaName, "ra", RaColumns.All, RaColumns.PrimaryKey)
     {
-        ArgumentNullException.ThrowIfNull(dataSource);
-        _dataSource = dataSource;
-        _schemaName = schemaName ?? PostgresSchemaProvisionerSchema;
     }
 
-    private const string PostgresSchemaProvisionerSchema = Schema.PostgresSchemaProvisioner.DefaultSchemaName;
-
-    public async Task<long> WriteAsync(IAsyncEnumerable<Ra> records, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(records);
-
-        var schema = QuoteIdentifier(_schemaName);
-        var allCols = string.Join(", ", RaColumns.All);
-        var pkCols = string.Join(", ", RaColumns.PrimaryKey);
-        var nonPkSet = string.Join(", ", RaColumns.NonPrimaryKey().Select(c => $"{c} = EXCLUDED.{c}"));
-
-        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var tx = await conn.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (var cmd = new NpgsqlCommand(
-                         $"CREATE TEMP TABLE stg_ra (LIKE {schema}.ra INCLUDING DEFAULTS) ON COMMIT DROP",
-                         conn,
-                         tx))
-        {
-            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        await using (var writer = await conn.BeginBinaryImportAsync(
-                         $"COPY stg_ra ({allCols}) FROM STDIN BINARY",
-                         cancellationToken).ConfigureAwait(false))
-        {
-            await foreach (var ra in records.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                await writer.StartRowAsync(cancellationToken).ConfigureAwait(false);
-                await WriteRowAsync(writer, ra, cancellationToken).ConfigureAwait(false);
-            }
-
-            await writer.CompleteAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        var mergeSql = $@"
-INSERT INTO {schema}.ra ({allCols})
-SELECT DISTINCT ON ({pkCols}) {allCols}
-FROM stg_ra
-ORDER BY {pkCols}, ctid DESC
-ON CONFLICT ({pkCols}) DO UPDATE SET {nonPkSet}";
-
-        long rows;
-        await using (var cmd = new NpgsqlCommand(mergeSql, conn, tx))
-        {
-            rows = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
-        return rows;
-    }
-
-    private static async Task WriteRowAsync(NpgsqlBinaryImporter writer, Ra ra, CancellationToken ct)
+    protected override async Task WriteRowAsync(NpgsqlBinaryImporter writer, Ra ra, CancellationToken ct)
     {
         await WriteText(writer, ra.RecordSpec, ct).ConfigureAwait(false);
         await WriteText(writer, ra.DataKubun, ct).ConfigureAwait(false);
@@ -157,64 +91,4 @@ ON CONFLICT ({pkCols}) DO UPDATE SET {nonPkSet}";
 
         await WriteText(writer, ra.RecordUpKubun, ct).ConfigureAwait(false);
     }
-
-    private static async ValueTask WriteText(NpgsqlBinaryImporter writer, string value, CancellationToken ct)
-    {
-        var v = RaConversions.AsText(value);
-        if (v is null)
-        {
-            await writer.WriteNullAsync(ct).ConfigureAwait(false);
-        }
-        else
-        {
-            await writer.WriteAsync(v, NpgsqlDbType.Text, ct).ConfigureAwait(false);
-        }
-    }
-
-    private static async ValueTask WriteDate(NpgsqlBinaryImporter writer, string value, CancellationToken ct)
-    {
-        var v = RaConversions.AsDate(value);
-        if (v is null)
-        {
-            await writer.WriteNullAsync(ct).ConfigureAwait(false);
-        }
-        else
-        {
-            await writer.WriteAsync(v.Value, NpgsqlDbType.Date, ct).ConfigureAwait(false);
-        }
-    }
-
-    private static async ValueTask WriteShort(NpgsqlBinaryImporter writer, string value, CancellationToken ct)
-    {
-        var v = RaConversions.AsShort(value);
-        if (v is null)
-        {
-            await writer.WriteNullAsync(ct).ConfigureAwait(false);
-        }
-        else
-        {
-            await writer.WriteAsync(v.Value, NpgsqlDbType.Smallint, ct).ConfigureAwait(false);
-        }
-    }
-
-    private static Task WriteShortArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken ct)
-    {
-        var arr = RaConversions.AsShortArray(values);
-        return writer.WriteAsync(arr, NpgsqlDbType.Array | NpgsqlDbType.Smallint, ct);
-    }
-
-    private static Task WriteIntArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken ct)
-    {
-        var arr = RaConversions.AsIntArray(values);
-        return writer.WriteAsync(arr, NpgsqlDbType.Array | NpgsqlDbType.Integer, ct);
-    }
-
-    private static Task WriteTextArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken ct)
-    {
-        var arr = RaConversions.AsTextArray(values);
-        return writer.WriteAsync(arr, NpgsqlDbType.Array | NpgsqlDbType.Text, ct);
-    }
-
-    private static string QuoteIdentifier(string identifier) =>
-        $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 }
