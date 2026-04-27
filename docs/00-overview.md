@@ -32,7 +32,14 @@ tables that mirror that specification one-to-one. Nothing more.
 - No analytics, no prediction, no visualisation. Downstream systems can
   do whatever they like with the loaded data; that work belongs in those
   systems, not here.
-- No support for databases other than PostgreSQL.
+- **Initially, PostgreSQL only.** The internal layout is structured so
+  that additional RDBMS backends could be added later, but no other
+  backend is in scope until there is concrete demand. Each RDBMS has its
+  own incompatible bulk-load mechanism (`COPY FROM STDIN BINARY` for
+  PostgreSQL, `SqlBulkCopy` for SQL Server, `LOAD DATA LOCAL INFILE` for
+  MySQL, the Appender API for DuckDB, and so on), so adding one will
+  mean a separate persistence implementation rather than a single shared
+  one.
 - No NAR (chihou) racing support. The UmaConn data source is a separate
   product and is not addressed by this project.
 - No real-time betting integration.
@@ -56,6 +63,9 @@ SQL.
 - **Bulk over single-row.** All inserts go through PostgreSQL's binary
   `COPY` protocol via Npgsql. Per-row `INSERT` is reserved for tiny
   bookkeeping tables (e.g. acquisition state).
+- **Speed first for the supported backend.** Where a choice exists
+  between portability and the fastest path on PostgreSQL, the fastest
+  path wins. Portability across RDBMS backends is not promised.
 - **Small surface area.** A few well-tested entry points are preferred to
   many configurable knobs.
 - **No silent recovery from unrecognised records.** Unknown record types
