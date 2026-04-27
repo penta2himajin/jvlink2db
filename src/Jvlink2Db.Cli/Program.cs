@@ -1,24 +1,29 @@
+using System;
 using System.CommandLine;
-using System.IO;
+using System.Threading.Tasks;
+using Jvlink2Db.Cli.Commands;
 using Microsoft.Extensions.Configuration;
 
 namespace Jvlink2Db.Cli;
 
 public static class Program
 {
-    public static int Main(string[] args)
+    public static Task<int> Main(string[] args)
     {
         IConfiguration configuration = BuildConfiguration(args);
         _ = configuration;
 
-        RootCommand root = new("jvlink2db — JRA-VAN Data Lab. importer for PostgreSQL.");
+        var root = new RootCommand("jvlink2db — JRA-VAN Data Lab. importer for PostgreSQL.")
+        {
+            ProbeCommand.Create(),
+        };
 
-        return root.Invoke(args);
+        return root.InvokeAsync(args);
     }
 
     internal static IConfiguration BuildConfiguration(string[] args)
     {
-        string baseDirectory = AppContext.BaseDirectory;
+        var baseDirectory = AppContext.BaseDirectory;
 
         return new ConfigurationBuilder()
             .SetBasePath(baseDirectory)
