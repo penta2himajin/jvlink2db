@@ -29,14 +29,19 @@ docs/                     design specifications
 
 ```bash
 dotnet restore
-dotnet build -c Release -r win-x86 --self-contained false
+dotnet build -c Release
 dotnet test
-dotnet run --project src/Jvlink2Db.Cli -- --help
+dotnet publish src/Jvlink2Db.Cli -c Release -r win-x86 --self-contained false
 ```
 
-`-r win-x86` is required: JV-Link is a 32-bit COM component and cannot
-be loaded into a 64-bit process. A 64-bit build will pass `dotnet build`
-but fail at runtime.
+Library projects build AnyCPU; only `Jvlink2Db.Cli` needs the `win-x86`
+runtime identifier so it runs as a 32-bit Windows process at runtime to
+host JV-Link (a 32-bit COM component). A 64-bit CLI passes `dotnet
+build` but fails at runtime when JV-Link is invoked. Solution-level
+`-r win-x86` is rejected by the .NET 8 SDK (`NETSDK1134`), so the RID
+is applied at publish time on the CLI project only. The
+framework-dependent CLI requires an x86 .NET 8 runtime installed
+alongside the usual x64 install.
 
 ## 開発原則: TDD (Red→Green→Refactor)
 
