@@ -164,11 +164,27 @@ ON CONFLICT ({pkColsSql}) DO UPDATE SET {nonPkSet}";
         }
     }
 
+    protected static async ValueTask WriteLong(NpgsqlBinaryImporter writer, string value, CancellationToken cancellationToken)
+    {
+        var v = JvFieldConversions.AsLong(value);
+        if (v is null)
+        {
+            await writer.WriteNullAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await writer.WriteAsync(v.Value, NpgsqlDbType.Bigint, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     protected static Task WriteShortArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken cancellationToken) =>
         writer.WriteAsync(JvFieldConversions.AsShortArray(values), NpgsqlDbType.Array | NpgsqlDbType.Smallint, cancellationToken);
 
     protected static Task WriteIntArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken cancellationToken) =>
         writer.WriteAsync(JvFieldConversions.AsIntArray(values), NpgsqlDbType.Array | NpgsqlDbType.Integer, cancellationToken);
+
+    protected static Task WriteLongArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken cancellationToken) =>
+        writer.WriteAsync(JvFieldConversions.AsLongArray(values), NpgsqlDbType.Array | NpgsqlDbType.Bigint, cancellationToken);
 
     protected static Task WriteTextArray(NpgsqlBinaryImporter writer, string[] values, CancellationToken cancellationToken) =>
         writer.WriteAsync(JvFieldConversions.AsTextArray(values), NpgsqlDbType.Array | NpgsqlDbType.Text, cancellationToken);

@@ -60,6 +60,18 @@ internal static class JvFieldConversions
             : null;
     }
 
+    public static long? AsLong(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var v)
+            ? v
+            : null;
+    }
+
     public static short?[] AsShortArray(string[] values)
     {
         var result = new short?[values.Length];
@@ -77,6 +89,17 @@ internal static class JvFieldConversions
         for (var i = 0; i < values.Length; i++)
         {
             result[i] = AsInt(values[i]);
+        }
+
+        return result;
+    }
+
+    public static long?[] AsLongArray(string[] values)
+    {
+        var result = new long?[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            result[i] = AsLong(values[i]);
         }
 
         return result;
