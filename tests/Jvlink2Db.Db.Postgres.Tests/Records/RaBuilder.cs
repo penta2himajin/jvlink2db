@@ -1,0 +1,101 @@
+using Jvlink2Db.Core.Records;
+
+namespace Jvlink2Db.Db.Postgres.Tests.Records;
+
+internal static class RaBuilder
+{
+    public static Ra Empty() => new()
+    {
+        RecordSpec = "RA",
+        DataKubun = string.Empty,
+        MakeDate = string.Empty,
+        Year = string.Empty,
+        MonthDay = string.Empty,
+        JyoCD = string.Empty,
+        Kaiji = string.Empty,
+        Nichiji = string.Empty,
+        RaceNum = string.Empty,
+        YoubiCD = string.Empty,
+        TokuNum = string.Empty,
+        Hondai = string.Empty,
+        Fukudai = string.Empty,
+        Kakko = string.Empty,
+        HondaiEng = string.Empty,
+        FukudaiEng = string.Empty,
+        KakkoEng = string.Empty,
+        Ryakusyo10 = string.Empty,
+        Ryakusyo6 = string.Empty,
+        Ryakusyo3 = string.Empty,
+        Kubun = string.Empty,
+        Nkai = string.Empty,
+        GradeCD = string.Empty,
+        GradeCDBefore = string.Empty,
+        SyubetuCD = string.Empty,
+        KigoCD = string.Empty,
+        JyuryoCD = string.Empty,
+        JyokenCD = ["", "", "", "", ""],
+        JyokenName = string.Empty,
+        Kyori = string.Empty,
+        KyoriBefore = string.Empty,
+        TrackCD = string.Empty,
+        TrackCDBefore = string.Empty,
+        CourseKubunCD = string.Empty,
+        CourseKubunCDBefore = string.Empty,
+        Honsyokin = ["", "", "", "", "", "", ""],
+        HonsyokinBefore = ["", "", "", "", ""],
+        Fukasyokin = ["", "", "", "", ""],
+        FukasyokinBefore = ["", "", ""],
+        HassoTime = string.Empty,
+        HassoTimeBefore = string.Empty,
+        TorokuTosu = string.Empty,
+        SyussoTosu = string.Empty,
+        NyusenTosu = string.Empty,
+        TenkoCD = string.Empty,
+        SibaBabaCD = string.Empty,
+        DirtBabaCD = string.Empty,
+        LapTime = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        SyogaiMileTime = string.Empty,
+        HaronTimeS3 = string.Empty,
+        HaronTimeS4 = string.Empty,
+        HaronTimeL3 = string.Empty,
+        HaronTimeL4 = string.Empty,
+        Corners =
+        [
+            new RaCorner(string.Empty, string.Empty, string.Empty),
+            new RaCorner(string.Empty, string.Empty, string.Empty),
+            new RaCorner(string.Empty, string.Empty, string.Empty),
+            new RaCorner(string.Empty, string.Empty, string.Empty),
+        ],
+        RecordUpKubun = string.Empty,
+    };
+
+    public static Ra Sample(string raceNum = "11", string hondai = "Test Race", string kyori = "1600") =>
+        Empty() with
+        {
+            DataKubun = "1",
+            MakeDate = "20260331",
+            Year = "2026",
+            MonthDay = "0331",
+            JyoCD = "06",
+            Kaiji = "01",
+            Nichiji = "08",
+            RaceNum = raceNum,
+            YoubiCD = "4",
+            Hondai = hondai,
+            Kyori = kyori,
+            TrackCD = "23",
+            TorokuTosu = "16",
+            SyussoTosu = "16",
+            NyusenTosu = "16",
+            JyokenCD = ["005", "010", "", "", ""],
+            Honsyokin = ["100000", "40000", "25000", "15000", "10000", "", ""],
+            LapTime = ["120", "121", "120", "118", "117", "118", "120", "121", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+            Corners =
+            [
+                new RaCorner("3", "1", "1-2-3-4-5"),
+                new RaCorner("4", "1", "1-2-3-4-5"),
+                new RaCorner(string.Empty, string.Empty, string.Empty),
+                new RaCorner(string.Empty, string.Empty, string.Empty),
+            ],
+        };
+}
