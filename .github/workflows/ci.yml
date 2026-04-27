@@ -48,7 +48,7 @@ jobs:
         run: dotnet build -c Release --no-restore
 
       - name: Test
-        run: dotnet test -c Release --no-build --verbosity normal
+        run: dotnet test -c Release --no-build --verbosity normal --filter "Category!=Database"
 
       - name: Publish CLI (win-x86)
         run: dotnet publish src/Jvlink2Db.Cli/Jvlink2Db.Cli.csproj -c Release -r win-x86 --self-contained false -o publish/cli
@@ -60,3 +60,30 @@ jobs:
           if (-not (Test-Path $exe)) { throw "jvlink2db.exe not found at $exe" }
           & $exe --help
           if ($LASTEXITCODE -ne 0) { throw "jvlink2db --help exited with $LASTEXITCODE" }
+
+  db-tests:
+    name: DB tests (Linux)
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore tests/Jvlink2Db.Db.Postgres.Tests/Jvlink2Db.Db.Postgres.Tests.csproj
+
+      - name: Build
+        run: dotnet build tests/Jvlink2Db.Db.Postgres.Tests/Jvlink2Db.Db.Postgres.Tests.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/Jvlink2Db.Db.Postgres.Tests/Jvlink2Db.Db.Postgres.Tests.csproj -c Release --no-build --verbosity normal
