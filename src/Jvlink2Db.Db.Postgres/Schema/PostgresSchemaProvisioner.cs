@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,19 +11,17 @@ using Npgsql;
 namespace Jvlink2Db.Db.Postgres.Schema;
 
 /// <summary>
-/// Provisions the PostgreSQL schema by running the embedded DDL files.
-/// The DDL files contain unqualified table names; this class wraps
-/// each invocation with <c>CREATE SCHEMA IF NOT EXISTS</c> +
+/// Provisions the PostgreSQL schema by running every embedded DDL
+/// file. The DDL files contain unqualified table names; this class
+/// wraps each invocation with <c>CREATE SCHEMA IF NOT EXISTS</c> +
 /// <c>SET search_path</c> so the same DDL can target any schema name.
 /// </summary>
 public sealed class PostgresSchemaProvisioner : ISchemaProvisioner
 {
     public const string DefaultSchemaName = "jv";
 
-    private static readonly string[] s_ddlResources =
-    [
-        "Jvlink2Db.Db.Postgres.Schema.ra.sql",
-    ];
+    private const string ResourcePrefix = "Jvlink2Db.Db.Postgres.Schema.";
+    private const string ResourceSuffix = ".sql";
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schemaName;
@@ -50,13 +50,19 @@ public sealed class PostgresSchemaProvisioner : ISchemaProvisioner
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        foreach (var resource in s_ddlResources)
+        foreach (var resource in DiscoverDdlResources())
         {
             var ddl = ReadEmbeddedDdl(resource);
             await using var cmd = new NpgsqlCommand(ddl, conn);
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private static IEnumerable<string> DiscoverDdlResources() =>
+        typeof(PostgresSchemaProvisioner).Assembly.GetManifestResourceNames()
+            .Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal)
+                           && name.EndsWith(ResourceSuffix, StringComparison.Ordinal))
+            .OrderBy(name => name, StringComparer.Ordinal);
 
     private static string ReadEmbeddedDdl(string resourceName)
     {

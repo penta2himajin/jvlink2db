@@ -14,9 +14,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\schema\ra.sql">
-      <Link>Schema\ra.sql</Link>
-      <LogicalName>Jvlink2Db.Db.Postgres.Schema.ra.sql</LogicalName>
+    <EmbeddedResource Include="..\..\schema\*.sql">
+      <Link>Schema\%(Filename)%(Extension)</Link>
+      <LogicalName>Jvlink2Db.Db.Postgres.Schema.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

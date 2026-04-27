@@ -4,11 +4,12 @@ using System.Globalization;
 namespace Jvlink2Db.Db.Postgres.Records;
 
 /// <summary>
-/// Converts the right-trimmed string fields on <see cref="Core.Records.Ra"/>
-/// into the typed values that <c>jv.ra</c> expects. Empty / spaces-only
-/// inputs and the all-zero date sentinel become <c>null</c>.
+/// Converts the right-trimmed string fields produced by the parser
+/// into the typed values that the database layer expects. Empty /
+/// spaces-only inputs and the all-zero date sentinel become
+/// <c>null</c>. Used by every per-record COPY writer.
 /// </summary>
-internal static class RaConversions
+internal static class JvFieldConversions
 {
     public static string? AsText(string value) =>
         string.IsNullOrEmpty(value) ? null : value;
