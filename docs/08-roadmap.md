@@ -105,6 +105,18 @@ Phase 2.
 
 ### Phase 2 — First record end-to-end
 
+**Status.** Done. Verified against a real JV-Link plus a local
+PostgreSQL on 2026-04-27:
+
+- `setup --dataspec RACE --fromtime 20260415000000 --option 1`:
+  144 RA rows inserted from 50 files.
+- `setup --dataspec RACE --fromtime 20260101000000-20260331235959
+  --option 4`: 1,173 RA rows inserted from 30 files; matches the
+  Phase 1 probe count exactly.
+- Re-running the option-4 command leaves `jv.ra` row count
+  unchanged (1,317 → 1,317), confirming idempotency end-to-end
+  through the staging-table + `ON CONFLICT DO UPDATE` path.
+
 **Goal.** A single record type travels all the way from JV-Link to a
 PostgreSQL table, idempotently.
 
