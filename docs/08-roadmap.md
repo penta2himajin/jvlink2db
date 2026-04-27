@@ -29,6 +29,8 @@ schedulers is planned.
 
 ### Phase 0 — Scaffold
 
+**Status.** Done.
+
 **Goal.** A buildable solution with the project layout described in
 [01-architecture.md](./01-architecture.md), an executable that runs and
 prints help text, and a CI pipeline that proves it.
@@ -54,6 +56,15 @@ prints help text, and a CI pipeline that proves it.
 - A user can clone the repo, build, and run `jvlink2db --help`.
 
 ### Phase 1 — Probe (most important milestone)
+
+**Status.** Done. Verified on a real JV-Link installation:
+
+- `option = 1`, fromtime `20260415000000`: `readcount = 50`, 13 record
+  types from the `RACE` dataspec.
+- `option = 4`, fromtime `20260101000000-20260331235959`: `readcount =
+  30`, 30,649 records across the same 13 record types
+  (`RA`/`SE`/`HR`/`H1`/`H6`/`O1`-`O6`/`WF`/`JG`). First record id
+  observed: `H1`.
 
 **Goal.** Prove on a real Windows host with a real JV-Link installation
 that the central protocol assumption — `JVOpen` with `option = 4` and a
