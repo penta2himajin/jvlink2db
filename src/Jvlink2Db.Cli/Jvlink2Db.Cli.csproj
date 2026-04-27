@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>Jvlink2Db.Cli</RootNamespace>
     <AssemblyName>jvlink2db</AssemblyName>
   </PropertyGroup>
