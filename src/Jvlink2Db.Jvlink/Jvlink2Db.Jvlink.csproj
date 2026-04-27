@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>Jvlink2Db.Jvlink</RootNamespace>
     <AssemblyName>Jvlink2Db.Jvlink</AssemblyName>
   </PropertyGroup>

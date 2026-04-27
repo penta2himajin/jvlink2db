@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>Jvlink2Db.Pipeline.Tests</RootNamespace>
     <AssemblyName>Jvlink2Db.Pipeline.Tests</AssemblyName>
     <IsPackable>false</IsPackable>
