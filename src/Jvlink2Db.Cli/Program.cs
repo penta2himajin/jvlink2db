@@ -16,6 +16,7 @@ public static class Program
         var root = new RootCommand("jvlink2db — JRA-VAN Data Lab. importer for PostgreSQL.")
         {
             ProbeCommand.Create(),
+            SetupCommand.Create(),
         };
 
         return root.InvokeAsync(args);
