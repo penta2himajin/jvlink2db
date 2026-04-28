@@ -19,6 +19,8 @@ internal sealed class FakeJvLink : IJvLink
     public int LastOption { get; private set; }
     public int OpenCallCount { get; private set; }
     public int SkipCallCount { get; private set; }
+    public int CloseCallCount { get; private set; }
+    public List<string> DeletedFiles { get; } = new();
 
     public FakeJvLink(
         JvLinkOpenResult openResult,
@@ -71,6 +73,13 @@ internal sealed class FakeJvLink : IJvLink
     public int Close()
     {
         Closed = true;
+        CloseCallCount++;
+        return 0;
+    }
+
+    public int FileDelete(string filename)
+    {
+        DeletedFiles.Add(filename);
         return 0;
     }
 }

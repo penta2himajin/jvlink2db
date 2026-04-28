@@ -263,11 +263,19 @@ interruption, and acquisition state is persisted.
 
 **Deferred.**
 
-- Mid-read recovery for `-402`/`-403`/`-502`/`-503` in `JVRead` /
-  `JVStatus` (the spec says "abort, retry the open"); right now these
-  surface as `JvLinkException`. The user re-runs and the next run
-  benefits from `acquisition_state` resume.
+- Mid-read recovery for `-502` (server failure) and `-503` (file
+  missing) in `JVRead` / `JVStatus`; right now these surface as
+  `JvLinkException`. The user re-runs and the next run benefits from
+  `acquisition_state` resume.
 - Multiple dataspecs in one CLI invocation (`--dataspec RACE,DIFF`).
+
+**Hotfix.** Mid-read recovery for `-402` (empty file) and `-403`
+(corrupt file) in `JVRead`: `SetupRunner` now invokes
+`JVFiledelete` to evict the local copy, closes and re-opens with the
+original parameters, then `JVSkip`s past the last successfully
+completed file so the next read triggers JV-Link to re-download the
+evicted file. Bounded retry budget per file (3 attempts) before
+surfacing the original code as `JvLinkException`.
 
 **Done when.**
 

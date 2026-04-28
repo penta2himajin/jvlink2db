@@ -83,6 +83,8 @@ public sealed class ComJvLink : IJvLink, IDisposable
         return new JvLinkSkipResult(rc, filename);
     }
 
+    public int FileDelete(string filename) => ToInt(Invoke("JVFiledelete", filename));
+
     public int Close() => ToInt(Invoke("JVClose"));
 
     public void Dispose()

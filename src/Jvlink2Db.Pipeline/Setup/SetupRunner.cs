@@ -83,7 +83,7 @@ public sealed class SetupRunner
             SkipPastResume(options.ResumeFromFilename);
 
             var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
-            var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, inserted, cancellationToken).ConfigureAwait(false);
+            var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, options, inserted, cancellationToken).ConfigureAwait(false);
 
             // Drain any leftover records (defence in depth — per-file flush
             // already handles the common case at file boundaries).
@@ -163,17 +163,22 @@ public sealed class SetupRunner
         }
     }
 
+    private const int MaxRecoveryRetriesPerFile = 3;
+
     private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(
         int totalFiles,
+        SetupOptions options,
         Dictionary<string, long> insertedTotals,
         CancellationToken cancellationToken)
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         string? lastFilename = null;
+        string? lastCompletedFilename = null;
         var fileIndex = 0;
         var recordsInFile = 0;
         var recordsTotal = 0;
         var readStartedAt = DateTimeOffset.UtcNow;
+        var retryByFile = new Dictionary<string, int>(StringComparer.Ordinal);
 
         while (true)
         {
@@ -202,6 +207,7 @@ public sealed class SetupRunner
             if (read.ReturnCode == -1 && !string.IsNullOrEmpty(read.Filename))
             {
                 lastFilename = read.Filename;
+                lastCompletedFilename = read.Filename;
                 fileIndex++;
                 _progress?.Invoke(new FileCompletedEvent(
                     Filename: read.Filename!,
@@ -236,9 +242,68 @@ public sealed class SetupRunner
                     await DelayAsync(cancellationToken).ConfigureAwait(false);
                     break;
 
+                case -402:
+                case -403:
+                    await RecoverCorruptFileAsync(
+                        read.ReturnCode,
+                        read.Filename ?? "(unknown)",
+                        options,
+                        lastCompletedFilename,
+                        retryByFile,
+                        cancellationToken).ConfigureAwait(false);
+                    recordsInFile = 0;
+                    break;
+
                 default:
                     throw new JvLinkException(read.ReturnCode, "JVGets");
             }
+        }
+    }
+
+    /// <summary>
+    /// Per <c>docs/06-error-handling.md</c>: on JVRead -402 (empty file)
+    /// or -403 (corrupt file), call <c>JVFiledelete</c> to evict the
+    /// local copy, then close+reopen and skip past the last successfully
+    /// completed file so the next read re-tries the now-evicted file
+    /// (which JV-Link will re-download). Bounded retries per file.
+    /// </summary>
+    private async Task RecoverCorruptFileAsync(
+        int returnCode,
+        string corruptFile,
+        SetupOptions options,
+        string? lastCompletedFilename,
+        Dictionary<string, int> retryByFile,
+        CancellationToken cancellationToken)
+    {
+        var attempts = retryByFile.GetValueOrDefault(corruptFile);
+        if (attempts >= MaxRecoveryRetriesPerFile)
+        {
+            throw new JvLinkException(returnCode, "JVGets");
+        }
+        retryByFile[corruptFile] = attempts + 1;
+
+        // Discard partial reads from the corrupt file: they may be valid
+        // bytes but we are about to re-read the entire file from scratch
+        // after JV-Link re-downloads it.
+        foreach (var sink in _sinks.Values)
+        {
+            sink.ClearBuffer();
+        }
+
+        _ = _jvLink.FileDelete(corruptFile);
+        _ = _jvLink.Close();
+
+        var reopen = _jvLink.Open(options.Dataspec, options.Fromtime, options.Option);
+        if (reopen.ReturnCode < 0)
+        {
+            throw new JvLinkException(reopen.ReturnCode, "JVOpen");
+        }
+
+        await WaitForDownloadAsync(reopen.DownloadCount, cancellationToken).ConfigureAwait(false);
+
+        if (!string.IsNullOrEmpty(lastCompletedFilename))
+        {
+            SkipPastResume(lastCompletedFilename);
         }
     }
 

@@ -34,6 +34,8 @@ public sealed class RecordSink<TRecord> : IRecordSink
         _records.Add(_decode(buffer));
     }
 
+    public void ClearBuffer() => _records.Clear();
+
     public async Task<long> FlushAsync(CancellationToken cancellationToken)
     {
         if (_records.Count == 0)
