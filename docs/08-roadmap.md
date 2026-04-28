@@ -221,6 +221,13 @@ The deferral does not affect row counts or PK semantics.
 
 ### Phase 4 — All modes and resume
 
+**Status.** Code complete. The four subcommands ship with run-history
+persistence, normal-mode and setup-mode resume, and retry-with-backoff
+on `JVOpen` for the documented transient codes. Live verification on
+a single dataspec round-trip is documented in PR 4b's description; a
+deliberate kill-and-resume integration test against the Testcontainers
+PostgreSQL instance is the only remaining done-criterion.
+
 **Goal.** All four acquisition modes work, runs are resumable after
 interruption, and acquisition state is persisted.
 
@@ -235,6 +242,32 @@ interruption, and acquisition state is persisted.
   and `JVSkip` to the saved filename.
 - Retry-with-backoff for the recoverable return codes documented in
   [06-error-handling.md](./06-error-handling.md).
+
+**Implemented.**
+
+- Subcommand split: `setup` (option=4 start-only), `range` (option=4 +
+  `--since`/`--until`, snapshot dataspecs rejected at parse time),
+  `normal` (option=1, `--since` resumes from `acquisition_state`),
+  `weekly` (option=2). PR 4a.
+- Operational schema (`jvlink2db.acquisition_state`,
+  `jvlink2db.run_history`) plus `IAcquisitionStateStore` /
+  `IRunHistoryStore`. Every CLI invocation writes a `run_history` row
+  with start/finish, outcome, JV-Link return codes, and JSONB summaries
+  of records read and inserted. PR 4b.
+- `IJvLink.Skip()` thin wrapper around `JVSkip`. `SetupRunner` accepts
+  `ResumeFromFilename` and skips past already-consumed files. PR 4b.
+- `JvLinkRetryPolicy` retries `JVOpen` for `-301` (auth transient,
+  3 retries at 1 s / 5 s / 30 s), `-411..-431` (HTTP errors, 3 retries
+  at 5 s / 30 s / 5 min), `-504` (server maintenance, 4 retries up to
+  60 min). Other codes fall through unchanged. PR 4c.
+
+**Deferred.**
+
+- Mid-read recovery for `-402`/`-403`/`-502`/`-503` in `JVRead` /
+  `JVStatus` (the spec says "abort, retry the open"); right now these
+  surface as `JvLinkException`. The user re-runs and the next run
+  benefits from `acquisition_state` resume.
+- Multiple dataspecs in one CLI invocation (`--dataspec RACE,DIFF`).
 
 **Done when.**
 

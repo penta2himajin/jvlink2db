@@ -5,7 +5,7 @@ namespace Jvlink2Db.Pipeline.Tests.Probe;
 
 internal sealed class FakeJvLink : IJvLink
 {
-    private readonly JvLinkOpenResult _openResult;
+    private readonly Queue<JvLinkOpenResult> _openResults;
     private readonly Queue<int> _statuses;
     private readonly Queue<JvLinkReadResult> _reads;
     private readonly Queue<JvLinkSkipResult> _skips;
@@ -17,6 +17,7 @@ internal sealed class FakeJvLink : IJvLink
     public string? LastDataspec { get; private set; }
     public string? LastFromtime { get; private set; }
     public int LastOption { get; private set; }
+    public int OpenCallCount { get; private set; }
     public int SkipCallCount { get; private set; }
 
     public FakeJvLink(
@@ -24,8 +25,17 @@ internal sealed class FakeJvLink : IJvLink
         IEnumerable<int> statuses,
         IEnumerable<JvLinkReadResult> reads,
         IEnumerable<JvLinkSkipResult>? skips = null)
+        : this(new[] { openResult }, statuses, reads, skips)
     {
-        _openResult = openResult;
+    }
+
+    public FakeJvLink(
+        IEnumerable<JvLinkOpenResult> openResults,
+        IEnumerable<int> statuses,
+        IEnumerable<JvLinkReadResult> reads,
+        IEnumerable<JvLinkSkipResult>? skips = null)
+    {
+        _openResults = new Queue<JvLinkOpenResult>(openResults);
         _statuses = new Queue<int>(statuses);
         _reads = new Queue<JvLinkReadResult>(reads);
         _skips = new Queue<JvLinkSkipResult>(skips ?? System.Array.Empty<JvLinkSkipResult>());
@@ -41,13 +51,14 @@ internal sealed class FakeJvLink : IJvLink
     public JvLinkOpenResult Open(string dataspec, string fromtime, int option)
     {
         Opened = true;
+        OpenCallCount++;
         LastDataspec = dataspec;
         LastFromtime = fromtime;
         LastOption = option;
-        return _openResult;
+        return _openResults.Count > 0 ? _openResults.Dequeue() : new JvLinkOpenResult(0, 0, 0, "");
     }
 
-    public int Status() => _statuses.Count > 0 ? _statuses.Dequeue() : _openResult.DownloadCount;
+    public int Status() => _statuses.Count > 0 ? _statuses.Dequeue() : 0;
 
     public JvLinkReadResult Read() => _reads.Dequeue();
 

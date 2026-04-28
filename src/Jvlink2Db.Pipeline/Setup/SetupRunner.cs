@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jvlink2Db.Core.Jvlink;
 using Jvlink2Db.Core.Persistence;
+using Jvlink2Db.Pipeline.Retry;
 
 namespace Jvlink2Db.Pipeline.Setup;
 
@@ -26,12 +27,14 @@ public sealed class SetupRunner
     private readonly ISchemaProvisioner _provisioner;
     private readonly Dictionary<string, IRecordSink> _sinks;
     private readonly TimeSpan _pollDelay;
+    private readonly JvLinkRetryPolicy _retryPolicy;
 
     public SetupRunner(
         IJvLink jvLink,
         ISchemaProvisioner provisioner,
         IEnumerable<IRecordSink> sinks,
-        TimeSpan? pollDelay = null)
+        TimeSpan? pollDelay = null,
+        JvLinkRetryPolicy? retryPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(jvLink);
         ArgumentNullException.ThrowIfNull(provisioner);
@@ -41,6 +44,7 @@ public sealed class SetupRunner
         _provisioner = provisioner;
         _sinks = sinks.ToDictionary(s => s.RecordSpec, StringComparer.Ordinal);
         _pollDelay = pollDelay ?? DefaultPollDelay;
+        _retryPolicy = retryPolicy ?? new JvLinkRetryPolicy();
     }
 
     public async Task<SetupReport> RunAsync(SetupOptions options, CancellationToken cancellationToken)
@@ -55,7 +59,9 @@ public sealed class SetupRunner
             throw new JvLinkException(initRc, "JVInit");
         }
 
-        var open = _jvLink.Open(options.Dataspec, options.Fromtime, options.Option);
+        var open = await _retryPolicy.ExecuteOpenAsync(
+            () => _jvLink.Open(options.Dataspec, options.Fromtime, options.Option),
+            cancellationToken).ConfigureAwait(false);
 
         try
         {
