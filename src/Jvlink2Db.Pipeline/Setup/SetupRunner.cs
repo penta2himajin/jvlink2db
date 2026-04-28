@@ -1,26 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Jvlink2Db.Core.Jvlink;
 using Jvlink2Db.Core.Persistence;
-using Jvlink2Db.Core.Records;
-using Jvlink2Db.Parser.Records;
 
 namespace Jvlink2Db.Pipeline.Setup;
 
 /// <summary>
 /// Runs the canonical JV-Link acquisition for a single dataspec and
-/// persists every <c>RA</c> record into the database. Non-<c>RA</c>
-/// records are counted and discarded; downstream phases will add the
-/// remaining record types.
+/// dispatches each record to its registered <see cref="IRecordSink"/>.
+/// Records whose spec is not in the registry are counted and discarded.
 ///
-/// The runner reads the entire batch into memory before invoking the
-/// writer so the database transaction is not held open across slow
-/// JV-Link I/O. For Phase 2 volumes (a few thousand <c>RA</c> records
-/// per 3-month window) this is bounded and simple.
+/// The runner buffers each sink in memory before flushing so the
+/// database transactions are not held open across slow JV-Link I/O.
+/// For Phase 3 volumes this is bounded and simple.
 /// </summary>
 public sealed class SetupRunner
 {
@@ -28,22 +24,22 @@ public sealed class SetupRunner
 
     private readonly IJvLink _jvLink;
     private readonly ISchemaProvisioner _provisioner;
-    private readonly IBulkWriter<Ra> _raWriter;
+    private readonly Dictionary<string, IRecordSink> _sinks;
     private readonly TimeSpan _pollDelay;
 
     public SetupRunner(
         IJvLink jvLink,
         ISchemaProvisioner provisioner,
-        IBulkWriter<Ra> raWriter,
+        IEnumerable<IRecordSink> sinks,
         TimeSpan? pollDelay = null)
     {
         ArgumentNullException.ThrowIfNull(jvLink);
         ArgumentNullException.ThrowIfNull(provisioner);
-        ArgumentNullException.ThrowIfNull(raWriter);
+        ArgumentNullException.ThrowIfNull(sinks);
 
         _jvLink = jvLink;
         _provisioner = provisioner;
-        _raWriter = raWriter;
+        _sinks = sinks.ToDictionary(s => s.RecordSpec, StringComparer.Ordinal);
         _pollDelay = pollDelay ?? DefaultPollDelay;
     }
 
@@ -75,10 +71,13 @@ public sealed class SetupRunner
 
             await WaitForDownloadAsync(open.DownloadCount, cancellationToken).ConfigureAwait(false);
 
-            var (raRecords, counts) = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            var counts = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
-            var inserted = await _raWriter.WriteAsync(ToAsyncEnumerable(raRecords, cancellationToken), cancellationToken)
-                .ConfigureAwait(false);
+            var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var sink in _sinks.Values)
+            {
+                inserted[sink.RecordSpec] = await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             return new SetupReport(
                 OpenReturnCode: open.ReturnCode,
@@ -86,7 +85,7 @@ public sealed class SetupRunner
                 DownloadCount: open.DownloadCount,
                 LastFileTimestamp: open.LastFileTimestamp,
                 RecordCountsById: counts,
-                RaInserted: inserted);
+                RecordsInsertedById: inserted);
         }
         finally
         {
@@ -100,7 +99,7 @@ public sealed class SetupRunner
         DownloadCount: open.DownloadCount,
         LastFileTimestamp: open.LastFileTimestamp,
         RecordCountsById: new Dictionary<string, int>(),
-        RaInserted: 0);
+        RecordsInsertedById: new Dictionary<string, long>());
 
     private async Task WaitForDownloadAsync(int downloadCount, CancellationToken cancellationToken)
     {
@@ -123,9 +122,8 @@ public sealed class SetupRunner
         }
     }
 
-    private async Task<(List<Ra> Records, Dictionary<string, int> Counts)> ReadAllAsync(CancellationToken cancellationToken)
+    private async Task<Dictionary<string, int>> ReadAllAsync(CancellationToken cancellationToken)
     {
-        var ra = new List<Ra>();
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
 
         while (true)
@@ -137,9 +135,9 @@ public sealed class SetupRunner
             {
                 var id = ExtractRecordId(read.Buffer);
                 counts[id] = counts.GetValueOrDefault(id) + 1;
-                if (id == RaDecoder.RecordSpec)
+                if (_sinks.TryGetValue(id, out var sink))
                 {
-                    ra.Add(RaDecoder.Decode(read.Buffer!));
+                    sink.Add(read.Buffer!);
                 }
 
                 continue;
@@ -148,7 +146,7 @@ public sealed class SetupRunner
             switch (read.ReturnCode)
             {
                 case 0:
-                    return (ra, counts);
+                    return counts;
 
                 case -1:
                     break;
@@ -182,15 +180,5 @@ public sealed class SetupRunner
         }
 
         await Task.Delay(_pollDelay, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async IAsyncEnumerable<Ra> ToAsyncEnumerable(List<Ra> records, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        foreach (var r in records)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return r;
-            await Task.Yield();
-        }
     }
 }

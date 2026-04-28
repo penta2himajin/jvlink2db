@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jvlink2Db.Core.Jvlink;
 using Jvlink2Db.Core.Records;
+using Jvlink2Db.Parser.Records;
 using Jvlink2Db.Pipeline.Setup;
 using Jvlink2Db.Pipeline.Tests.Probe;
 using Xunit;
@@ -51,10 +53,11 @@ public class SetupRunnerTests
         Assert.Equal(new[] { "01", "02", "03" }, writer.Written.Select(r => r.RaceNum).ToArray());
         Assert.Equal(3, report.RaInserted);
         Assert.Equal(3, report.RecordCountsById["RA"]);
+        Assert.Equal(3, report.RecordsInsertedById["RA"]);
     }
 
     [Fact]
-    public async Task RunAsync_skips_non_RA_records_but_counts_them()
+    public async Task RunAsync_skips_unregistered_record_specs_but_counts_them()
     {
         var open = new JvLinkOpenResult(0, 1, 1, "20260331235959000");
         var jv = new FakeJvLink(
@@ -63,9 +66,9 @@ public class SetupRunnerTests
             reads: new[]
             {
                 JvLinkReadResult.Record(TestBuffers.Ra("01"), "f.dat"),
-                JvLinkReadResult.Record(TestBuffers.NonRa("SE"), "f.dat"),
-                JvLinkReadResult.Record(TestBuffers.NonRa("SE"), "f.dat"),
-                JvLinkReadResult.Record(TestBuffers.NonRa("JG"), "f.dat"),
+                JvLinkReadResult.Record(TestBuffers.NonRa("ZZ"), "f.dat"),
+                JvLinkReadResult.Record(TestBuffers.NonRa("ZZ"), "f.dat"),
+                JvLinkReadResult.Record(TestBuffers.NonRa("YY"), "f.dat"),
                 JvLinkReadResult.EndOfFile("f.dat"),
                 JvLinkReadResult.EndOfData,
             });
@@ -77,8 +80,10 @@ public class SetupRunnerTests
 
         Assert.Single(writer.Written);
         Assert.Equal(1, report.RecordCountsById["RA"]);
-        Assert.Equal(2, report.RecordCountsById["SE"]);
-        Assert.Equal(1, report.RecordCountsById["JG"]);
+        Assert.Equal(2, report.RecordCountsById["ZZ"]);
+        Assert.Equal(1, report.RecordCountsById["YY"]);
+        Assert.False(report.RecordsInsertedById.ContainsKey("ZZ"));
+        Assert.False(report.RecordsInsertedById.ContainsKey("YY"));
     }
 
     [Fact]
@@ -167,6 +172,39 @@ public class SetupRunnerTests
         Assert.Equal(1, report.RaInserted);
     }
 
+    [Fact]
+    public async Task RunAsync_dispatches_to_multiple_sinks_by_record_spec()
+    {
+        var open = new JvLinkOpenResult(0, 1, 1, "20260331235959000");
+        var jv = new FakeJvLink(
+            openResult: open,
+            statuses: new[] { 1 },
+            reads: new[]
+            {
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f.dat"),
+                JvLinkReadResult.Record(TestBuffers.NonRa("ZZ"), "f.dat"),
+                JvLinkReadResult.Record(TestBuffers.NonRa("ZZ"), "f.dat"),
+                JvLinkReadResult.EndOfFile("f.dat"),
+                JvLinkReadResult.EndOfData,
+            });
+        var prov = new FakeSchemaProvisioner();
+        var raWriter = new FakeBulkWriter<Ra>();
+        var zzWriter = new FakeBulkWriter<byte[]>();
+        var sinks = new IRecordSink[]
+        {
+            new RecordSink<Ra>("RA", RaDecoder.Decode, raWriter),
+            new RecordSink<byte[]>("ZZ", b => b, zzWriter),
+        };
+        var runner = new SetupRunner(jv, prov, sinks, pollDelay: TimeSpan.Zero);
+
+        var report = await runner.RunAsync(NewOptions(), CancellationToken.None);
+
+        Assert.Single(raWriter.Written);
+        Assert.Equal(2, zzWriter.Written.Count);
+        Assert.Equal(1, report.RecordsInsertedById["RA"]);
+        Assert.Equal(2, report.RecordsInsertedById["ZZ"]);
+    }
+
     private static SetupOptions NewOptions() =>
         new(Sid: "jvlink2db/test", Dataspec: "RACE", Fromtime: "20260101000000-20260331235959", Option: 4);
 
@@ -180,5 +218,7 @@ public class SetupRunnerTests
     }
 
     private static SetupRunner NewRunner(FakeJvLink jv, FakeSchemaProvisioner prov, FakeBulkWriter<Ra> writer) =>
-        new(jv, prov, writer, pollDelay: TimeSpan.Zero);
+        new(jv, prov,
+            new IRecordSink[] { new RecordSink<Ra>("RA", RaDecoder.Decode, writer) },
+            pollDelay: TimeSpan.Zero);
 }
