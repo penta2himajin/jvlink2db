@@ -8,7 +8,8 @@ public sealed record SetupReport(
     int DownloadCount,
     string LastFileTimestamp,
     IReadOnlyDictionary<string, int> RecordCountsById,
-    IReadOnlyDictionary<string, long> RecordsInsertedById)
+    IReadOnlyDictionary<string, long> RecordsInsertedById,
+    string? LastConsumedFilename = null)
 {
     public long RaInserted => RecordsInsertedById.TryGetValue("RA", out var v) ? v : 0;
 }

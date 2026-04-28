@@ -4,4 +4,5 @@ public sealed record SetupOptions(
     string Sid,
     string Dataspec,
     string Fromtime,
-    int Option);
+    int Option,
+    string? ResumeFromFilename = null);

@@ -71,7 +71,9 @@ public sealed class SetupRunner
 
             await WaitForDownloadAsync(open.DownloadCount, cancellationToken).ConfigureAwait(false);
 
-            var counts = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            SkipPastResume(options.ResumeFromFilename);
+
+            var (counts, lastFilename) = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
 
             var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
             foreach (var sink in _sinks.Values)
@@ -85,7 +87,8 @@ public sealed class SetupRunner
                 DownloadCount: open.DownloadCount,
                 LastFileTimestamp: open.LastFileTimestamp,
                 RecordCountsById: counts,
-                RecordsInsertedById: inserted);
+                RecordsInsertedById: inserted,
+                LastConsumedFilename: lastFilename);
         }
         finally
         {
@@ -122,9 +125,32 @@ public sealed class SetupRunner
         }
     }
 
-    private async Task<Dictionary<string, int>> ReadAllAsync(CancellationToken cancellationToken)
+    private void SkipPastResume(string? resumeFromFilename)
+    {
+        if (string.IsNullOrEmpty(resumeFromFilename))
+        {
+            return;
+        }
+
+        while (true)
+        {
+            var skip = _jvLink.Skip();
+            if (skip.ReturnCode != 0)
+            {
+                return;
+            }
+
+            if (string.Equals(skip.Filename, resumeFromFilename, StringComparison.Ordinal))
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(CancellationToken cancellationToken)
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        string? lastFilename = null;
 
         while (true)
         {
@@ -135,6 +161,11 @@ public sealed class SetupRunner
             {
                 var id = ExtractRecordId(read.Buffer);
                 counts[id] = counts.GetValueOrDefault(id) + 1;
+                if (!string.IsNullOrEmpty(read.Filename))
+                {
+                    lastFilename = read.Filename;
+                }
+
                 if (_sinks.TryGetValue(id, out var sink))
                 {
                     sink.Add(read.Buffer!);
@@ -143,10 +174,15 @@ public sealed class SetupRunner
                 continue;
             }
 
+            if (read.ReturnCode == -1 && !string.IsNullOrEmpty(read.Filename))
+            {
+                lastFilename = read.Filename;
+            }
+
             switch (read.ReturnCode)
             {
                 case 0:
-                    return counts;
+                    return (counts, lastFilename);
 
                 case -1:
                     break;

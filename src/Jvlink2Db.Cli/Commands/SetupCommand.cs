@@ -10,6 +10,7 @@ public static class SetupCommand
     {
         var connection = ModeRunner.Connection();
         var schema = ModeRunner.Schema();
+        var operationalSchema = ModeRunner.OperationalSchema();
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
 
@@ -20,20 +21,24 @@ public static class SetupCommand
 
         var cmd = new Command(
             "setup",
-            "Full historical bulk load (option=4, start-only fromtime). Reads everything since --since.")
+            "Full historical bulk load (option=4, start-only fromtime). Resumes from acquisition_state.last_filename via JVSkip.")
         {
-            connection, schema, dataspec, sid, since,
+            connection, schema, operationalSchema, dataspec, sid, since,
         };
 
-        cmd.SetHandler(ctx =>
-            ModeRunner.ExecuteAsync(
-                ctx,
-                connection: ctx.ParseResult.GetValueForOption(connection)!,
-                schema: ctx.ParseResult.GetValueForOption(schema)!,
-                dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
-                fromtime: ctx.ParseResult.GetValueForOption(since)!,
-                option: 4,
-                sid: ctx.ParseResult.GetValueForOption(sid)!));
+        cmd.SetHandler(async ctx =>
+        {
+            await ModeRunner.ExecuteAsync(ctx, new RunDescriptor(
+                Mode: "setup",
+                Connection: ctx.ParseResult.GetValueForOption(connection)!,
+                Schema: ctx.ParseResult.GetValueForOption(schema)!,
+                OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
+                Sid: ctx.ParseResult.GetValueForOption(sid)!,
+                Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
+                Option: 4,
+                Fromtime: ctx.ParseResult.GetValueForOption(since)!,
+                Resume: ResumeBehavior.SetupIncremental)).ConfigureAwait(false);
+        });
 
         return cmd;
     }

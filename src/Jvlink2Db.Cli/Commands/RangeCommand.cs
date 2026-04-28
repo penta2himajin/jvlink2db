@@ -11,6 +11,7 @@ public static class RangeCommand
     {
         var connection = ModeRunner.Connection();
         var schema = ModeRunner.Schema();
+        var operationalSchema = ModeRunner.OperationalSchema();
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
 
@@ -26,9 +27,9 @@ public static class RangeCommand
 
         var cmd = new Command(
             "range",
-            "Bounded historical load (option=4, range fromtime). Snapshot dataspecs (TOKU/DIFF/DIFN/HOSE/HOSN/HOYU/COMM) are rejected.")
+            "Bounded historical load (option=4, range fromtime). Snapshot dataspecs (TOKU/DIFF/DIFN/HOSE/HOSN/HOYU/COMM) are rejected. No resume — re-running the same window is idempotent through ON CONFLICT.")
         {
-            connection, schema, dataspec, sid, since, until,
+            connection, schema, operationalSchema, dataspec, sid, since, until,
         };
 
         cmd.SetHandler(async ctx =>
@@ -48,14 +49,16 @@ public static class RangeCommand
             var sinceValue = ctx.ParseResult.GetValueForOption(since)!;
             var untilValue = ctx.ParseResult.GetValueForOption(until)!;
 
-            await ModeRunner.ExecuteAsync(
-                ctx,
-                connection: ctx.ParseResult.GetValueForOption(connection)!,
-                schema: ctx.ParseResult.GetValueForOption(schema)!,
-                dataspec: dataspecValue,
-                fromtime: $"{sinceValue}-{untilValue}",
-                option: 4,
-                sid: ctx.ParseResult.GetValueForOption(sid)!).ConfigureAwait(false);
+            await ModeRunner.ExecuteAsync(ctx, new RunDescriptor(
+                Mode: "range",
+                Connection: ctx.ParseResult.GetValueForOption(connection)!,
+                Schema: ctx.ParseResult.GetValueForOption(schema)!,
+                OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
+                Sid: ctx.ParseResult.GetValueForOption(sid)!,
+                Dataspec: dataspecValue,
+                Option: 4,
+                Fromtime: $"{sinceValue}-{untilValue}",
+                Resume: ResumeBehavior.None)).ConfigureAwait(false);
         });
 
         return cmd;

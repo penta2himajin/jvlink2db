@@ -10,5 +10,7 @@ public interface IJvLink
 
     JvLinkReadResult Read();
 
+    JvLinkSkipResult Skip();
+
     int Close();
 }
