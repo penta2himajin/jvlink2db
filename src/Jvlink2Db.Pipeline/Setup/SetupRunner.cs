@@ -82,17 +82,19 @@ public sealed class SetupRunner
 
             SkipPastResume(options.ResumeFromFilename);
 
-            var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, cancellationToken).ConfigureAwait(false);
-
             var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
+            var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, inserted, cancellationToken).ConfigureAwait(false);
+
+            // Drain any leftover records (defence in depth — per-file flush
+            // already handles the common case at file boundaries).
             foreach (var sink in _sinks.Values)
             {
-                var bufferedCount = counts.GetValueOrDefault(sink.RecordSpec);
-                _progress?.Invoke(new FlushStartedEvent(sink.RecordSpec, bufferedCount));
-                var flushStartedAt = DateTimeOffset.UtcNow;
-                var rowsInserted = await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
-                _progress?.Invoke(new FlushCompletedEvent(sink.RecordSpec, rowsInserted, DateTimeOffset.UtcNow - flushStartedAt));
-                inserted[sink.RecordSpec] = rowsInserted;
+                if (sink.BufferedCount == 0)
+                {
+                    continue;
+                }
+
+                await FlushSinkAsync(sink, inserted, cancellationToken).ConfigureAwait(false);
             }
 
             return new SetupReport(
@@ -161,7 +163,10 @@ public sealed class SetupRunner
         }
     }
 
-    private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(int totalFiles, CancellationToken cancellationToken)
+    private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(
+        int totalFiles,
+        Dictionary<string, long> insertedTotals,
+        CancellationToken cancellationToken)
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         string? lastFilename = null;
@@ -206,6 +211,17 @@ public sealed class SetupRunner
                     RecordsTotal: recordsTotal,
                     Elapsed: DateTimeOffset.UtcNow - readStartedAt));
                 recordsInFile = 0;
+
+                // Flush each non-empty sink to bound memory at one file's worth.
+                foreach (var sink in _sinks.Values)
+                {
+                    if (sink.BufferedCount == 0)
+                    {
+                        continue;
+                    }
+
+                    await FlushSinkAsync(sink, insertedTotals, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             switch (read.ReturnCode)
@@ -234,6 +250,19 @@ public sealed class SetupRunner
         }
 
         return Encoding.ASCII.GetString(buffer, 0, 2);
+    }
+
+    private async Task FlushSinkAsync(
+        IRecordSink sink,
+        Dictionary<string, long> insertedTotals,
+        CancellationToken cancellationToken)
+    {
+        var bufferedCount = sink.BufferedCount;
+        _progress?.Invoke(new FlushStartedEvent(sink.RecordSpec, bufferedCount));
+        var flushStartedAt = DateTimeOffset.UtcNow;
+        var rowsInserted = await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
+        _progress?.Invoke(new FlushCompletedEvent(sink.RecordSpec, rowsInserted, DateTimeOffset.UtcNow - flushStartedAt));
+        insertedTotals[sink.RecordSpec] = insertedTotals.GetValueOrDefault(sink.RecordSpec) + rowsInserted;
     }
 
     private async Task DelayAsync(CancellationToken cancellationToken)

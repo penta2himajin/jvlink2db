@@ -12,6 +12,8 @@ public interface IRecordSink
 {
     string RecordSpec { get; }
 
+    int BufferedCount { get; }
+
     void Add(byte[] buffer);
 
     Task<long> FlushAsync(CancellationToken cancellationToken);

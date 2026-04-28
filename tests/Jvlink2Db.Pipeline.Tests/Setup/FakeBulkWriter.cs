@@ -14,7 +14,7 @@ internal sealed class FakeBulkWriter<T> : IBulkWriter<T>
 
     public bool ProvisionerCalledFirst { get; private set; }
 
-    public Func<List<T>, long> ResultSelector { get; set; } = list => list.Count;
+    public Func<List<T>, long>? ResultSelector { get; set; }
 
     public Exception? Throws { get; set; }
 
@@ -26,11 +26,15 @@ internal sealed class FakeBulkWriter<T> : IBulkWriter<T>
             throw Throws;
         }
 
+        var batchStart = Written.Count;
         await foreach (var item in records.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
             Written.Add(item);
         }
 
-        return ResultSelector(Written);
+        // Production IBulkWriter.WriteAsync returns the rows merged in
+        // *this* batch — match that contract so per-file flushes don't
+        // double-count by returning the cumulative buffer size.
+        return ResultSelector?.Invoke(Written) ?? (Written.Count - batchStart);
     }
 }
