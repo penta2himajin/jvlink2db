@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Jvlink2Db.Pipeline.Setup;
@@ -9,7 +10,9 @@ public sealed record SetupReport(
     string LastFileTimestamp,
     IReadOnlyDictionary<string, int> RecordCountsById,
     IReadOnlyDictionary<string, long> RecordsInsertedById,
-    string? LastConsumedFilename = null)
+    string? LastConsumedFilename = null,
+    IReadOnlyDictionary<string, TimeSpan>? FlushDurationByRecordSpec = null,
+    TimeSpan ReadDuration = default)
 {
     public long RaInserted => RecordsInsertedById.TryGetValue("RA", out var v) ? v : 0;
 }

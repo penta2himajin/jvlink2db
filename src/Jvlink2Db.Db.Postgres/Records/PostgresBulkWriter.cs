@@ -67,6 +67,21 @@ public abstract class PostgresBulkWriter<TRecord> : IBulkWriter<TRecord>
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var tx = await conn.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
+        // Bulk historical loads issue thousands of small transactions —
+        // one per JV-Link file boundary per record-spec. Each COMMIT does
+        // a WAL fsync at the default synchronous_commit=on. On WSL2 ext4
+        // a single fsync is several ms, so the cumulative wait dominates
+        // throughput. Switch to async commits at the transaction scope:
+        // if the host crashes, we lose the most recent commits, but
+        // jvlink2db is idempotent (ON CONFLICT) so a re-run recovers.
+        await using (var cmd = new NpgsqlCommand(
+                         "SET LOCAL synchronous_commit = OFF",
+                         conn,
+                         tx))
+        {
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         await using (var cmd = new NpgsqlCommand(
                          $"CREATE TEMP TABLE {stagingTable} (LIKE {qualifiedTable} INCLUDING DEFAULTS) ON COMMIT DROP",
                          conn,
