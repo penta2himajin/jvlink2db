@@ -18,7 +18,9 @@ public class MidReadRecoveryTests
     public async Task RunAsync_recovers_from_403_by_deleting_file_reopening_and_skipping()
     {
         // Scenario: 3 files. f1 reads cleanly. f2 throws -403 mid-read.
-        // After recovery (delete + reopen + skip past f1) we re-read f2 (now good) and then f3.
+        // Recovery: delete f2, close, reopen. JV-Link restarts from f1 → we
+        // peek f1's first record, see it's the resume target, JVSkip the rest
+        // of f1. Next read is f2's first record (fresh re-download), then f3.
         var jv = new FakeJvLink(
             openResults: new[]
             {
@@ -33,16 +35,14 @@ public class MidReadRecoveryTests
                 // f2 first attempt: a partial record then -403
                 JvLinkReadResult.Record(TestBuffers.Ra("02"), "f2.dat"),
                 new JvLinkReadResult(-403, null, "f2.dat"),
-                // After recovery: re-read f2 cleanly, then f3
+                // After recovery — skip-past-resume peek of f1, then JVSkip
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
+                // next reads after JVSkip — f2 (re-downloaded, now good), then f3
                 JvLinkReadResult.Record(TestBuffers.Ra("02"), "f2.dat"),
                 JvLinkReadResult.EndOfFile("f2.dat"),
                 JvLinkReadResult.Record(TestBuffers.Ra("03"), "f3.dat"),
                 JvLinkReadResult.EndOfFile("f3.dat"),
                 JvLinkReadResult.EndOfData,
-            },
-            skips: new[]
-            {
-                new JvLinkSkipResult(0, "f1.dat"),  // skip until f1 (the last completed file)
             });
         var writer = new FakeBulkWriter<Ra>();
         var runner = new SetupRunner(jv, new FakeSchemaProvisioner(),
@@ -53,7 +53,7 @@ public class MidReadRecoveryTests
 
         Assert.Equal(2, jv.OpenCallCount);                     // initial + 1 recovery reopen
         Assert.Equal(new[] { "f2.dat" }, jv.DeletedFiles);    // corrupt file deleted
-        Assert.Equal(1, jv.SkipCallCount);                    // skipped f1 to resume past it
+        Assert.Equal(1, jv.SkipCallCount);                    // f1 skipped during resume
 
         // Final result: f1 + f2 + f3 all merged exactly once each (the partial f2 read was discarded).
         Assert.Equal(new[] { "01", "02", "03" }, writer.Written.Select(r => r.RaceNum).ToArray());
@@ -63,7 +63,8 @@ public class MidReadRecoveryTests
     [Fact]
     public async Task RunAsync_propagates_403_after_max_retries_per_file()
     {
-        // Same file fails -403 even after one recovery → SetupRunner gives up.
+        // Same file fails -403 across attempts. Budget is 3 retries per file
+        // (MaxRecoveryRetriesPerFile in SetupRunner) → 4th -403 re-throws.
         var jv = new FakeJvLink(
             openResults: Enumerable.Repeat(new JvLinkOpenResult(0, 2, 0, "ts"), 5),
             statuses: Enumerable.Repeat(2, 5),
@@ -72,11 +73,16 @@ public class MidReadRecoveryTests
                 JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
                 JvLinkReadResult.EndOfFile("f1.dat"),
                 new JvLinkReadResult(-403, null, "f2.dat"),  // attempt 1
+                // recovery 1: peek f1, JVSkip
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
                 new JvLinkReadResult(-403, null, "f2.dat"),  // attempt 2
+                // recovery 2: peek f1, JVSkip
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
                 new JvLinkReadResult(-403, null, "f2.dat"),  // attempt 3
+                // recovery 3: peek f1, JVSkip
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
                 new JvLinkReadResult(-403, null, "f2.dat"),  // attempt 4 — exhausts budget
-            },
-            skips: Enumerable.Repeat(new JvLinkSkipResult(0, "f1.dat"), 4));
+            });
         var writer = new FakeBulkWriter<Ra>();
         var runner = new SetupRunner(jv, new FakeSchemaProvisioner(),
             new IRecordSink[] { new RecordSink<Ra>("RA", RaDecoder.Decode, writer) },
@@ -86,7 +92,7 @@ public class MidReadRecoveryTests
             runner.RunAsync(NewOptions(), CancellationToken.None));
 
         Assert.Equal(-403, ex.ReturnCode);
-        Assert.Equal(3, jv.DeletedFiles.Count);  // 3 retries, each one deletes the file before reopening
+        Assert.Equal(3, jv.DeletedFiles.Count);  // 3 successful recoveries before the 4th re-throws
     }
 
     private static SetupOptions NewOptions() =>
