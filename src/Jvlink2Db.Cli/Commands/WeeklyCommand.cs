@@ -2,10 +2,8 @@ using System.CommandLine;
 
 namespace Jvlink2Db.Cli.Commands;
 
-public static class SetupCommand
+public static class WeeklyCommand
 {
-    private const string DefaultSince = "19860101000000";
-
     public static Command Create()
     {
         var connection = ModeRunner.Connection();
@@ -15,12 +13,12 @@ public static class SetupCommand
 
         var since = new Option<string>(
             name: "--since",
-            description: "Start of fromtime, YYYYMMDDhhmmss. Defaults to JRA-VAN epoch.",
-            getDefaultValue: () => DefaultSince);
+            description: "fromtime parameter passed to JVOpen, YYYYMMDDhhmmss. JV-Link still requires it for option=2 even though only the current week's data is returned.")
+        { IsRequired = true };
 
         var cmd = new Command(
-            "setup",
-            "Full historical bulk load (option=4, start-only fromtime). Reads everything since --since.")
+            "weekly",
+            "This-week-only fetch (option=2). Reads only entries plus the previous week's results, not the historical archive.")
         {
             connection, schema, dataspec, sid, since,
         };
@@ -32,7 +30,7 @@ public static class SetupCommand
                 schema: ctx.ParseResult.GetValueForOption(schema)!,
                 dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
                 fromtime: ctx.ParseResult.GetValueForOption(since)!,
-                option: 4,
+                option: 2,
                 sid: ctx.ParseResult.GetValueForOption(sid)!));
 
         return cmd;

@@ -2,10 +2,8 @@ using System.CommandLine;
 
 namespace Jvlink2Db.Cli.Commands;
 
-public static class SetupCommand
+public static class NormalCommand
 {
-    private const string DefaultSince = "19860101000000";
-
     public static Command Create()
     {
         var connection = ModeRunner.Connection();
@@ -15,12 +13,12 @@ public static class SetupCommand
 
         var since = new Option<string>(
             name: "--since",
-            description: "Start of fromtime, YYYYMMDDhhmmss. Defaults to JRA-VAN epoch.",
-            getDefaultValue: () => DefaultSince);
+            description: "Start of fromtime, YYYYMMDDhhmmss. Reads everything strictly newer than this instant.")
+        { IsRequired = true };
 
         var cmd = new Command(
-            "setup",
-            "Full historical bulk load (option=4, start-only fromtime). Reads everything since --since.")
+            "normal",
+            "Incremental update (option=1). Reads anything matching dataspec strictly newer than --since.")
         {
             connection, schema, dataspec, sid, since,
         };
@@ -32,7 +30,7 @@ public static class SetupCommand
                 schema: ctx.ParseResult.GetValueForOption(schema)!,
                 dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
                 fromtime: ctx.ParseResult.GetValueForOption(since)!,
-                option: 4,
+                option: 1,
                 sid: ctx.ParseResult.GetValueForOption(sid)!));
 
         return cmd;

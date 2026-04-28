@@ -17,6 +17,9 @@ public static class Program
         {
             ProbeCommand.Create(),
             SetupCommand.Create(),
+            RangeCommand.Create(),
+            NormalCommand.Create(),
+            WeeklyCommand.Create(),
         };
 
         return root.InvokeAsync(args);
