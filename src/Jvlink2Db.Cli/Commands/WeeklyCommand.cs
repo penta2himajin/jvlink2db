@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Threading.Tasks;
 
 namespace Jvlink2Db.Cli.Commands;
 
@@ -8,6 +9,7 @@ public static class WeeklyCommand
     {
         var connection = ModeRunner.Connection();
         var schema = ModeRunner.Schema();
+        var operationalSchema = ModeRunner.OperationalSchema();
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
 
@@ -20,18 +22,22 @@ public static class WeeklyCommand
             "weekly",
             "This-week-only fetch (option=2). Reads only entries plus the previous week's results, not the historical archive.")
         {
-            connection, schema, dataspec, sid, since,
+            connection, schema, operationalSchema, dataspec, sid, since,
         };
 
-        cmd.SetHandler(ctx =>
-            ModeRunner.ExecuteAsync(
-                ctx,
-                connection: ctx.ParseResult.GetValueForOption(connection)!,
-                schema: ctx.ParseResult.GetValueForOption(schema)!,
-                dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
-                fromtime: ctx.ParseResult.GetValueForOption(since)!,
-                option: 2,
-                sid: ctx.ParseResult.GetValueForOption(sid)!));
+        cmd.SetHandler(async ctx =>
+        {
+            await ModeRunner.ExecuteAsync(ctx, new RunDescriptor(
+                Mode: "weekly",
+                Connection: ctx.ParseResult.GetValueForOption(connection)!,
+                Schema: ctx.ParseResult.GetValueForOption(schema)!,
+                OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
+                Sid: ctx.ParseResult.GetValueForOption(sid)!,
+                Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
+                Option: 2,
+                Fromtime: ctx.ParseResult.GetValueForOption(since)!,
+                Resume: ResumeBehavior.None)).ConfigureAwait(false);
+        });
 
         return cmd;
     }

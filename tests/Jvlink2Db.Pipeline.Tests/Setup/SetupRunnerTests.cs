@@ -205,6 +205,59 @@ public class SetupRunnerTests
         Assert.Equal(2, report.RecordsInsertedById["ZZ"]);
     }
 
+    [Fact]
+    public async Task RunAsync_reports_last_consumed_filename()
+    {
+        var open = new JvLinkOpenResult(0, 2, 2, "20260331235959000");
+        var jv = new FakeJvLink(
+            openResult: open,
+            statuses: new[] { 2 },
+            reads: new[]
+            {
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f1.dat"),
+                JvLinkReadResult.EndOfFile("f1.dat"),
+                JvLinkReadResult.Record(TestBuffers.Ra("02"), "f2.dat"),
+                JvLinkReadResult.EndOfFile("f2.dat"),
+                JvLinkReadResult.EndOfData,
+            });
+        var runner = NewRunner(jv, new FakeSchemaProvisioner(), new FakeBulkWriter<Ra>());
+
+        var report = await runner.RunAsync(NewOptions(), CancellationToken.None);
+
+        Assert.Equal("f2.dat", report.LastConsumedFilename);
+    }
+
+    [Fact]
+    public async Task RunAsync_skips_files_via_JVSkip_when_ResumeFromFilename_is_set()
+    {
+        var open = new JvLinkOpenResult(0, 3, 3, "20260331235959000");
+        var jv = new FakeJvLink(
+            openResult: open,
+            statuses: new[] { 3 },
+            reads: new[]
+            {
+                JvLinkReadResult.Record(TestBuffers.Ra("03"), "f3.dat"),
+                JvLinkReadResult.EndOfFile("f3.dat"),
+                JvLinkReadResult.EndOfData,
+            },
+            skips: new[]
+            {
+                new JvLinkSkipResult(0, "f1.dat"),
+                new JvLinkSkipResult(0, "f2.dat"),  // matches ResumeFromFilename → loop exits
+            });
+        var writer = new FakeBulkWriter<Ra>();
+        var runner = NewRunner(jv, new FakeSchemaProvisioner(), writer);
+
+        var report = await runner.RunAsync(
+            new SetupOptions("sid", "RACE", "20260101000000", 4, ResumeFromFilename: "f2.dat"),
+            CancellationToken.None);
+
+        Assert.Equal(2, jv.SkipCallCount);
+        Assert.Single(writer.Written);
+        Assert.Equal("03", writer.Written[0].RaceNum);
+        Assert.Equal("f3.dat", report.LastConsumedFilename);
+    }
+
     private static SetupOptions NewOptions() =>
         new(Sid: "jvlink2db/test", Dataspec: "RACE", Fromtime: "20260101000000-20260331235959", Option: 4);
 

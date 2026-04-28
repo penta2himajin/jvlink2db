@@ -18,6 +18,10 @@
       <Link>Schema\%(Filename)%(Extension)</Link>
       <LogicalName>Jvlink2Db.Db.Postgres.Schema.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\schema\jvlink2db\*.sql">
+      <Link>Schema\jvlink2db\%(Filename)%(Extension)</Link>
+      <LogicalName>Jvlink2Db.Db.Postgres.OperationalSchema.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

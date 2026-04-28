@@ -72,6 +72,17 @@ public sealed class ComJvLink : IJvLink, IDisposable
         return new JvLinkReadResult(rc, null, filename);
     }
 
+    public JvLinkSkipResult Skip()
+    {
+        var args = new object?[] { string.Empty };
+        var byRef = new ParameterModifier(args.Length);
+        byRef[0] = true;
+
+        var rc = ToInt(InvokeWithModifiers("JVSkip", args, byRef));
+        var filename = args[0] as string ?? string.Empty;
+        return new JvLinkSkipResult(rc, filename);
+    }
+
     public int Close() => ToInt(Invoke("JVClose"));
 
     public void Dispose()
