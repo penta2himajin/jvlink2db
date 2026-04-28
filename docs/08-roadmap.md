@@ -280,6 +280,13 @@ interruption, and acquisition state is persisted.
 
 ### Phase 5 — Scheduled execution
 
+**Status.** Code complete. Foreground watch mode and the
+`schedule install` / `uninstall` / `status` subcommand family are
+shipped. Live verification of `--watch` is documented in PR 5a.
+The Task Scheduler installation flow needs a Windows host with the
+right rights to create scheduled tasks; the manual test plan is
+captured on PR 5b.
+
 **Goal.** A first-class way to run jvlink2db on a recurring schedule
 via Windows Task Scheduler, plus a long-running foreground mode for
 containerised use.

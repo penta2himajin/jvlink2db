@@ -75,6 +75,67 @@ When it lands, dataspecs will be processed in sequence — one `JVOpen`
 call each, never combined into a single call (see the `dataspec`
 known-issue note in [02-jvlink-protocol.md](./02-jvlink-protocol.md)).
 
+## Recurring execution
+
+Two complementary mechanisms cover the recurring-acquisition use
+case. Pick the one that matches your runtime.
+
+### `--watch` for foreground / containerised use
+
+`normal` and `weekly` accept `--watch --interval <duration>`. The
+process stays in the foreground and re-runs the acquisition every
+interval until Ctrl+C / SIGTERM. Per-cycle errors are logged to
+stderr and do not stop the loop. `--interval` accepts either
+`HH:MM:SS` or shorthand `30s` / `5m` / `1h` / `1d`.
+
+```
+jvlink2db normal --dataspec RACE --watch --interval 30m \
+  --connection "Host=...;Username=postgres;Password=..."
+```
+
+This mode is ideal for containers (`docker run --restart=always …`)
+and for terminal sessions where the foreground process is the
+process supervisor.
+
+### `schedule install` for unattended Windows hosts
+
+The `schedule` subcommand family drives Windows Task Scheduler so
+jvlink2db.exe can run unattended on a recurring trigger. All tasks
+are registered under the `\jvlink2db\` folder so `schedule status`
+and `schedule uninstall` stay scoped.
+
+```
+jvlink2db schedule install \
+  --name race-normal \
+  --mode normal \
+  --dataspec RACE \
+  --connection "Host=…;…" \
+  --daily 06:30
+
+jvlink2db schedule install \
+  --name race-weekly \
+  --mode weekly \
+  --dataspec RACE \
+  --connection "Host=…;…" \
+  --since 20260415000000 \
+  --every 1h
+
+jvlink2db schedule status
+jvlink2db schedule uninstall --name race-normal
+```
+
+Tasks default to `LogonType = InteractiveToken` (run only when the
+user is logged on) with `RunLevel = Highest`, which gives JV-Link
+COM access to the user's session without an interactive UAC prompt.
+Pass `--always --password <pw>` to switch to `LogonType = Password`
+so the task fires whether or not the user is logged on; Task
+Scheduler stores the credential.
+
+The action arguments installed by `schedule install` mirror the
+`normal` / `weekly` CLI surface — running `schedule install`
+followed by inspecting the registered task in `taskschd.msc` shows
+the exact command line that will fire.
+
 ## Progress and logging
 
 While a run is active the CLI prints, on a single re-written line:
