@@ -80,7 +80,7 @@ public sealed class SetupRunner
 
             await WaitForDownloadAsync(open.DownloadCount, cancellationToken).ConfigureAwait(false);
 
-            SkipPastResume(options.ResumeFromFilename);
+            await SkipPastResumeAsync(options.ResumeFromFilename, cancellationToken).ConfigureAwait(false);
 
             var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
             var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, options, inserted, cancellationToken).ConfigureAwait(false);
@@ -141,24 +141,62 @@ public sealed class SetupRunner
         }
     }
 
-    private void SkipPastResume(string? resumeFromFilename)
+    private async Task SkipPastResumeAsync(string? resumeFromFilename, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(resumeFromFilename))
         {
             return;
         }
 
+        // JVSkip is parameterless and returns no metadata, so we discover
+        // "which file are we currently in" by peeking via JVRead. For each
+        // file before resumeFromFilename: JVRead one record (or take the
+        // EOF), then JVSkip to advance to the next file. When JVRead lands
+        // inside resumeFromFilename, JVSkip the rest and we're done.
         while (true)
         {
-            var skip = _jvLink.Skip();
-            if (skip.ReturnCode != 0)
-            {
-                return;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
 
-            if (string.Equals(skip.Filename, resumeFromFilename, StringComparison.Ordinal))
+            var read = _jvLink.Read();
+            switch (read.ReturnCode)
             {
-                return;
+                case 0:
+                    // End of data — resume target was past the end. Nothing more to skip.
+                    return;
+
+                case -3:
+                    await DelayAsync(cancellationToken).ConfigureAwait(false);
+                    continue;
+
+                case -1:
+                    // EOF marker for some file. If it's the target file, the
+                    // next JVRead returns the first record of the next file —
+                    // perfect, we're past the resume point.
+                    if (string.Equals(read.Filename, resumeFromFilename, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+                    // EOF of some earlier file. Loop and read the first record
+                    // of the next file.
+                    continue;
+
+                default:
+                    if (read.ReturnCode > 0)
+                    {
+                        if (string.Equals(read.Filename, resumeFromFilename, StringComparison.Ordinal))
+                        {
+                            // We're inside the target file. Skip the rest of it
+                            // and return — next JVRead is the first record of
+                            // the next file.
+                            _jvLink.Skip();
+                            return;
+                        }
+                        // We're inside some earlier file. Skip it.
+                        _jvLink.Skip();
+                        continue;
+                    }
+
+                    throw new JvLinkException(read.ReturnCode, "JVGets-during-skip");
             }
         }
     }
@@ -303,7 +341,7 @@ public sealed class SetupRunner
 
         if (!string.IsNullOrEmpty(lastCompletedFilename))
         {
-            SkipPastResume(lastCompletedFilename);
+            await SkipPastResumeAsync(lastCompletedFilename, cancellationToken).ConfigureAwait(false);
         }
     }
 

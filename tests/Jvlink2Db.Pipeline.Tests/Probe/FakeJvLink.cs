@@ -8,7 +8,6 @@ internal sealed class FakeJvLink : IJvLink
     private readonly Queue<JvLinkOpenResult> _openResults;
     private readonly Queue<int> _statuses;
     private readonly Queue<JvLinkReadResult> _reads;
-    private readonly Queue<JvLinkSkipResult> _skips;
 
     public bool Initialized { get; private set; }
     public bool Opened { get; private set; }
@@ -25,22 +24,19 @@ internal sealed class FakeJvLink : IJvLink
     public FakeJvLink(
         JvLinkOpenResult openResult,
         IEnumerable<int> statuses,
-        IEnumerable<JvLinkReadResult> reads,
-        IEnumerable<JvLinkSkipResult>? skips = null)
-        : this(new[] { openResult }, statuses, reads, skips)
+        IEnumerable<JvLinkReadResult> reads)
+        : this(new[] { openResult }, statuses, reads)
     {
     }
 
     public FakeJvLink(
         IEnumerable<JvLinkOpenResult> openResults,
         IEnumerable<int> statuses,
-        IEnumerable<JvLinkReadResult> reads,
-        IEnumerable<JvLinkSkipResult>? skips = null)
+        IEnumerable<JvLinkReadResult> reads)
     {
         _openResults = new Queue<JvLinkOpenResult>(openResults);
         _statuses = new Queue<int>(statuses);
         _reads = new Queue<JvLinkReadResult>(reads);
-        _skips = new Queue<JvLinkSkipResult>(skips ?? System.Array.Empty<JvLinkSkipResult>());
     }
 
     public int Init(string sid)
@@ -64,11 +60,7 @@ internal sealed class FakeJvLink : IJvLink
 
     public JvLinkReadResult Read() => _reads.Dequeue();
 
-    public JvLinkSkipResult Skip()
-    {
-        SkipCallCount++;
-        return _skips.Count > 0 ? _skips.Dequeue() : new JvLinkSkipResult(-1, string.Empty);
-    }
+    public void Skip() => SkipCallCount++;
 
     public int Close()
     {

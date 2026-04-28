@@ -72,15 +72,12 @@ public sealed class ComJvLink : IJvLink, IDisposable
         return new JvLinkReadResult(rc, null, filename);
     }
 
-    public JvLinkSkipResult Skip()
+    public void Skip()
     {
-        var args = new object?[] { string.Empty };
-        var byRef = new ParameterModifier(args.Length);
-        byRef[0] = true;
-
-        var rc = ToInt(InvokeWithModifiers("JVSkip", args, byRef));
-        var filename = args[0] as string ?? string.Empty;
-        return new JvLinkSkipResult(rc, filename);
+        // JVSkip is a parameterless, void method per the SDK type library.
+        // The caller learns "what was just skipped" by reading the filename
+        // out param of the next JVGets call.
+        InvokeVoid("JVSkip");
     }
 
     public int FileDelete(string filename) => ToInt(Invoke("JVFiledelete", filename));
@@ -101,6 +98,12 @@ public sealed class ComJvLink : IJvLink, IDisposable
         var instance = _instance ?? throw new ObjectDisposedException(nameof(ComJvLink));
         return _comType.InvokeMember(method, BindingFlags.InvokeMethod, binder: null, instance, args)
             ?? throw new InvalidOperationException($"JV-Link {method} returned null.");
+    }
+
+    private void InvokeVoid(string method, params object?[] args)
+    {
+        var instance = _instance ?? throw new ObjectDisposedException(nameof(ComJvLink));
+        _ = _comType.InvokeMember(method, BindingFlags.InvokeMethod, binder: null, instance, args);
     }
 
     private object InvokeWithModifiers(string method, object?[] args, ParameterModifier modifiers)
