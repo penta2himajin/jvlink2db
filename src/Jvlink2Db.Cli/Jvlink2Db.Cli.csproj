@@ -5,6 +5,14 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>Jvlink2Db.Cli</RootNamespace>
     <AssemblyName>jvlink2db</AssemblyName>
+    <!--
+      Override the solution-wide InvariantGlobalization setting from
+      Directory.Build.props. The TaskScheduler library used by the
+      schedule subcommand requires CultureInfo("en") in its static
+      initializer, which throws CultureNotFoundException under
+      invariant mode.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
