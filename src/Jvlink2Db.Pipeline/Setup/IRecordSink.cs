@@ -16,5 +16,13 @@ public interface IRecordSink
 
     void Add(byte[] buffer);
 
+    /// <summary>
+    /// Discards all records currently buffered for the next flush.
+    /// Used by <see cref="SetupRunner"/> to drop partial reads from
+    /// a corrupt JV-Link file before retrying the read after a
+    /// <c>-402</c>/<c>-403</c> recovery cycle.
+    /// </summary>
+    void ClearBuffer();
+
     Task<long> FlushAsync(CancellationToken cancellationToken);
 }
