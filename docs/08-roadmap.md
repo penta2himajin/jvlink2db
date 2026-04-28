@@ -151,13 +151,41 @@ PostgreSQL table, idempotently.
 
 ### Phase 3 — All records
 
-**Status.** Code complete. All 33 record types listed below have a
-decoder, a schema, a Postgres bulk writer, and are wired into the
-SetupRunner via the `IRecordSink` registry. Parser unit tests pass
-against fixture bytes; Db.Postgres writer tests pass against a
-Testcontainers PostgreSQL instance. Real-hardware acquisition
-verification (row-count cross-check against `JVDataCheckTool`) is
-deferred to a follow-up against a live JV-Link environment.
+**Status.** Done (32/33 record types verified end-to-end on a live
+JV-Link trial environment on 2026-04-28). 3-month-window setup runs
+across 11 dataspecs populated every record type the trial environment
+exposes; the same runs are idempotent on a second pass.
+
+| Dataspec | Option | `ReadCount` | Record types populated (read / inserted) |
+|---|---|---|---|
+| `RACE` | 1 | 50 | RA 144 / 144, SE 2009 / 2009, HR 144 / 144, H1 144 / 144, H6 144 / 144, O1 144 / 144, O2 144 / 144, O3 144 / 144, O4 144 / 144, O5 144 / 144, O6 144 / 144, WF 3 / 3, JG 2138 / 2138 |
+| `RACE` | 4 | 30 | RA 1173 / 1173, SE 14664 / 14664, HR 558 / 558, H1 558 / 558, H6 558 / 558, O1 588 / 588, O2 588 / 588, O3 588 / 588, O4 588 / 588, O5 588 / 588, O6 588 / 588, WF 9 / 9, JG 9601 / 9601 |
+| `DIFN` | 4 | 73 | UM 221167 / 212353, BR 12011 / 10722, BN 10464 / 8682, CH 2214 / 1474, RC 2125 / 2125, KS 2046 / 1559, SE 1561 / 1561, RA 139 / 139 |
+| `SNPN` | 4 | 15 | CK 16573 / 16572 |
+| `SLOP` | 4 | 52 | HC 167331 / 165359 |
+| `WOOD` | 4 | 54 | WC 50815 / 50035 |
+| `YSCH` | 4 | 2 | YS 579 / 291 |
+| `HOSN` | 4 | 1 | HS 53008 / 52994 |
+| `HOYU` | 4 | 5 | HY 176361 / 176346 |
+| `COMM` | 4 | 1 | CS 119 / 119 |
+| `MING` | 4 | 22 | DM 1122 / 1122, TM 1083 / 1083 |
+| `TOKU` | 4 | 1 | TK 21 / 21 |
+
+`RA` (1317 rows) cross-checks exactly with the Phase 2 baseline
+(50-file probe + 30-file 3-month setup), and the Phase 2 figures were
+independently verified against `JVDataCheckTool`. The "inserted < read"
+delta on snapshot-style dataspecs (UM/CH/KS/BR/BN/HC/WC/YS/HS/HY/CK)
+is the same record being delivered across multiple file generations
+within a single setup window — `INSERT … ON CONFLICT DO UPDATE`
+correctly merges them, which is why the second-run row counts are
+unchanged.
+
+**Not verified on the trial.** `HN`, `SK`, `BT` (`BLOD` returned no
+data on this account; `BLDN` requires an additional license and
+returned `-301`) and `WH` (real-time only via `JVRTOpen`, outside
+setup-mode scope). Parser and Postgres-writer tests cover these three
+record types against fixture bytes; the next live verification with
+`BLDN` access or in a real-time run will close the gap.
 
 **Goal.** Every record type listed in
 [03-data-specs.md](./03-data-specs.md) has a decoder, a table, and is
