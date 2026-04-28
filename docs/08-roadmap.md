@@ -151,6 +151,14 @@ PostgreSQL table, idempotently.
 
 ### Phase 3 — All records
 
+**Status.** Code complete. All 33 record types listed below have a
+decoder, a schema, a Postgres bulk writer, and are wired into the
+SetupRunner via the `IRecordSink` registry. Parser unit tests pass
+against fixture bytes; Db.Postgres writer tests pass against a
+Testcontainers PostgreSQL instance. Real-hardware acquisition
+verification (row-count cross-check against `JVDataCheckTool`) is
+deferred to a follow-up against a live JV-Link environment.
+
 **Goal.** Every record type listed in
 [03-data-specs.md](./03-data-specs.md) has a decoder, a table, and is
 loaded by the pipeline.
@@ -165,6 +173,16 @@ loaded by the pipeline.
 - Each parser added in TDD style: fixture bytes → expected DTO Red,
   decoder Green, refactor.
 - Unknown record IDs continue to be logged and skipped, not coerced.
+
+**Deferred.** A handful of deeply-nested sub-records are scaffolded
+(top-level identifying scalars decoded; inner stat blocks left for a
+follow-up). These are noted in their schema headers:
+
+- `KS` / `CH` `HonZenRuikei[3]` (1052-byte annual stat blocks)
+- `CK` `CHAKUKAISU3/4/5_INFO` placement-count arrays and the
+  1220-byte `HonRuikei[2]` annual stat blocks
+
+The deferral does not affect row counts or PK semantics.
 
 **Done when.**
 

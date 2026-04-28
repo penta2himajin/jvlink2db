@@ -8,4 +8,7 @@ public sealed record SetupReport(
     int DownloadCount,
     string LastFileTimestamp,
     IReadOnlyDictionary<string, int> RecordCountsById,
-    long RaInserted);
+    IReadOnlyDictionary<string, long> RecordsInsertedById)
+{
+    public long RaInserted => RecordsInsertedById.TryGetValue("RA", out var v) ? v : 0;
+}

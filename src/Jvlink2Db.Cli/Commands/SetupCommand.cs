@@ -53,7 +53,7 @@ public static class SetupCommand
 
         var cmd = new Command(
             "setup",
-            "Bulk-load JV-Data records (currently RA only) into the target PostgreSQL.")
+            "Bulk-load JV-Data records into the target PostgreSQL.")
         {
             connection, schema, dataspec, fromtime, option, sid,
         };
@@ -72,8 +72,8 @@ public static class SetupCommand
             using var jv = new ComJvLink();
 
             var provisioner = new PostgresSchemaProvisioner(dataSource, schemaValue);
-            var writer = new PostgresRaWriter(dataSource, schemaValue);
-            var runner = new SetupRunner(jv, provisioner, writer);
+            var sinks = PostgresSinkFactory.CreateAll(dataSource, schemaValue);
+            var runner = new SetupRunner(jv, provisioner, sinks);
 
             try
             {
@@ -101,10 +101,9 @@ public static class SetupCommand
         Console.WriteLine($"ReadCount          : {report.ReadCount}");
         Console.WriteLine($"DownloadCount      : {report.DownloadCount}");
         Console.WriteLine($"LastFileTimestamp  : {report.LastFileTimestamp}");
-        Console.WriteLine($"RA records inserted: {report.RaInserted}");
         Console.WriteLine();
 
-        Console.WriteLine("Record counts by ID:");
+        Console.WriteLine("Record counts by ID (read / inserted):");
         if (report.RecordCountsById.Count == 0)
         {
             Console.WriteLine("  (no records)");
@@ -113,7 +112,8 @@ public static class SetupCommand
         {
             foreach (var kv in report.RecordCountsById.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal))
             {
-                Console.WriteLine($"  {kv.Key}: {kv.Value}");
+                var inserted = report.RecordsInsertedById.TryGetValue(kv.Key, out var n) ? n.ToString() : "-";
+                Console.WriteLine($"  {kv.Key}: {kv.Value} / {inserted}");
             }
         }
     }
