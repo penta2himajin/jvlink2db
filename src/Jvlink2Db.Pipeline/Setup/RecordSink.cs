@@ -11,7 +11,7 @@ public sealed class RecordSink<TRecord> : IRecordSink
 {
     private readonly Func<byte[], TRecord> _decode;
     private readonly IBulkWriter<TRecord> _writer;
-    private readonly List<TRecord> _records = new();
+    private List<TRecord> _records = new();
 
     public RecordSink(string recordSpec, Func<byte[], TRecord> decode, IBulkWriter<TRecord> writer)
     {
@@ -26,20 +26,38 @@ public sealed class RecordSink<TRecord> : IRecordSink
 
     public string RecordSpec { get; }
 
+    public int BufferedCount => _records.Count;
+
     public void Add(byte[] buffer)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         _records.Add(_decode(buffer));
     }
 
-    public Task<long> FlushAsync(CancellationToken cancellationToken) =>
-        _records.Count == 0
-            ? Task.FromResult(0L)
-            : _writer.WriteAsync(ToAsync(cancellationToken), cancellationToken);
-
-    private async IAsyncEnumerable<TRecord> ToAsync([EnumeratorCancellation] CancellationToken cancellationToken)
+    public async Task<long> FlushAsync(CancellationToken cancellationToken)
     {
-        foreach (var r in _records)
+        if (_records.Count == 0)
+        {
+            return 0;
+        }
+
+        // Snapshot the current buffer so it can be cleared eagerly: the
+        // writer can iterate the snapshot while new records (next file)
+        // accumulate into _records — bounding memory to two file's worth
+        // in the rare overlap window.
+        var snapshot = _records;
+        _records = new List<TRecord>();
+
+        var inserted = await _writer.WriteAsync(ToAsync(snapshot, cancellationToken), cancellationToken)
+            .ConfigureAwait(false);
+        return inserted;
+    }
+
+    private static async IAsyncEnumerable<TRecord> ToAsync(
+        List<TRecord> source,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        foreach (var r in source)
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return r;
