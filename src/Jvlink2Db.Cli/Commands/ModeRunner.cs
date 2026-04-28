@@ -197,9 +197,18 @@ internal static class ModeRunner
         {
             Console.WriteLine($"LastConsumedFile   : {report.LastConsumedFilename}");
         }
+
+        if (report.ReadDuration > TimeSpan.Zero)
+        {
+            var totalFlushDuration = report.FlushDurationByRecordSpec is null
+                ? TimeSpan.Zero
+                : report.FlushDurationByRecordSpec.Values.Aggregate(TimeSpan.Zero, (acc, d) => acc + d);
+            Console.WriteLine($"ReadDuration       : {Format(report.ReadDuration)} (read+decode time, includes per-file flush)");
+            Console.WriteLine($"TotalFlushTime     : {Format(totalFlushDuration)} (sum across record-types — wall-clock overlap with read)");
+        }
         Console.WriteLine();
 
-        Console.WriteLine("Record counts by ID (read / inserted):");
+        Console.WriteLine("Record counts by ID (read / inserted / flush):");
         if (report.RecordCountsById.Count == 0)
         {
             Console.WriteLine("  (no records)");
@@ -208,8 +217,12 @@ internal static class ModeRunner
 
         foreach (var kv in report.RecordCountsById.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal))
         {
-            var inserted = report.RecordsInsertedById.TryGetValue(kv.Key, out var n) ? n.ToString() : "-";
-            Console.WriteLine($"  {kv.Key}: {kv.Value} / {inserted}");
+            var inserted = report.RecordsInsertedById.TryGetValue(kv.Key, out var n) ? n.ToString("N0") : "-";
+            var flush = report.FlushDurationByRecordSpec is not null
+                        && report.FlushDurationByRecordSpec.TryGetValue(kv.Key, out var d)
+                ? Format(d)
+                : "-";
+            Console.WriteLine($"  {kv.Key}: {kv.Value:N0} / {inserted} / {flush}");
         }
     }
 
