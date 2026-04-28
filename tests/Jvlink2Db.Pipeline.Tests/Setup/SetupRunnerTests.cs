@@ -258,6 +258,70 @@ public class SetupRunnerTests
         Assert.Equal("f3.dat", report.LastConsumedFilename);
     }
 
+    [Fact]
+    public async Task RunAsync_retries_JvOpen_on_transient_codes_via_retry_policy()
+    {
+        var jv = new FakeJvLink(
+            openResults: new[]
+            {
+                new JvLinkOpenResult(-301, 0, 0, ""),
+                new JvLinkOpenResult(-301, 0, 0, ""),
+                new JvLinkOpenResult(0, 1, 0, "ts"),
+            },
+            statuses: new[] { 1 },
+            reads: new[]
+            {
+                JvLinkReadResult.Record(TestBuffers.Ra("01"), "f.dat"),
+                JvLinkReadResult.EndOfFile("f.dat"),
+                JvLinkReadResult.EndOfData,
+            });
+        var prov = new FakeSchemaProvisioner();
+        var writer = new FakeBulkWriter<Ra>();
+        var policy = new Pipeline.Retry.JvLinkRetryPolicy(
+            recorder: (_, __) => Task.CompletedTask);
+
+        var runner = new SetupRunner(jv, prov,
+            new IRecordSink[] { new RecordSink<Ra>("RA", RaDecoder.Decode, writer) },
+            pollDelay: TimeSpan.Zero,
+            retryPolicy: policy);
+
+        var report = await runner.RunAsync(NewOptions(), CancellationToken.None);
+
+        Assert.Equal(3, jv.OpenCallCount);
+        Assert.Single(writer.Written);
+        Assert.Equal(0, report.OpenReturnCode);
+    }
+
+    [Fact]
+    public async Task RunAsync_throws_after_retry_budget_is_exhausted()
+    {
+        var jv = new FakeJvLink(
+            openResults: new[]
+            {
+                new JvLinkOpenResult(-301, 0, 0, ""),
+                new JvLinkOpenResult(-301, 0, 0, ""),
+                new JvLinkOpenResult(-301, 0, 0, ""),
+                new JvLinkOpenResult(-301, 0, 0, ""),
+            },
+            statuses: System.Array.Empty<int>(),
+            reads: System.Array.Empty<JvLinkReadResult>());
+        var prov = new FakeSchemaProvisioner();
+        var writer = new FakeBulkWriter<Ra>();
+        var policy = new Pipeline.Retry.JvLinkRetryPolicy(
+            recorder: (_, __) => Task.CompletedTask);
+
+        var runner = new SetupRunner(jv, prov,
+            new IRecordSink[] { new RecordSink<Ra>("RA", RaDecoder.Decode, writer) },
+            pollDelay: TimeSpan.Zero,
+            retryPolicy: policy);
+
+        var ex = await Assert.ThrowsAsync<JvLinkException>(() =>
+            runner.RunAsync(NewOptions(), CancellationToken.None));
+
+        Assert.Equal(-301, ex.ReturnCode);
+        Assert.Equal(4, jv.OpenCallCount);  // initial + 3 retries from default schedule
+    }
+
     private static SetupOptions NewOptions() =>
         new(Sid: "jvlink2db/test", Dataspec: "RACE", Fromtime: "20260101000000-20260331235959", Option: 4);
 
