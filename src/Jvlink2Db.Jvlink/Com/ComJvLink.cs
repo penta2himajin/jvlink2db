@@ -19,6 +19,7 @@ public sealed class ComJvLink : IJvLink, IDisposable
 
     private readonly Type _comType;
     private object? _instance;
+    private dynamic? _dynamicInstance;
 
     public ComJvLink()
     {
@@ -28,6 +29,11 @@ public sealed class ComJvLink : IJvLink, IDisposable
         _instance = Activator.CreateInstance(_comType)
             ?? throw new InvalidOperationException(
                 $"Failed to create COM instance for '{ProgId}'.");
+        // Dynamic alias for the hot path (Read). The DLR's COM binder caches
+        // the bound delegate at the first invocation and reuses it for the
+        // remaining ~1M+ records, avoiding the reflection-based dispatch that
+        // Type.InvokeMember does on every call.
+        _dynamicInstance = _instance;
     }
 
     public int Init(string sid) => ToInt(Invoke("JVInit", sid));
@@ -53,19 +59,20 @@ public sealed class ComJvLink : IJvLink, IDisposable
 
     public JvLinkReadResult Read()
     {
+        var jv = _dynamicInstance ?? throw new ObjectDisposedException(nameof(ComJvLink));
+
         // JV-Link writes into the byte array via SAFEARRAY-of-UI1; the
-        // initial contents do not matter, only that we hand it a byte[].
-        var args = new object?[] { new byte[1], DefaultBufferSize, string.Empty };
-        var byRef = new ParameterModifier(args.Length);
-        byRef[0] = true;
-        byRef[2] = true;
+        // initial buffer can be a placeholder that the COM call replaces.
+        // ref-typed object boxes participate in IDispatch byref VARIANT
+        // marshalling for COM, which the DLR's ComBinder handles end-to-end.
+        object bufferArg = new byte[1];
+        object filenameArg = string.Empty;
+        int rc = (int)jv.JVGets(ref bufferArg, DefaultBufferSize, ref filenameArg);
 
-        var rc = ToInt(InvokeWithModifiers("JVGets", args, byRef));
-        var filename = args[2] as string ?? string.Empty;
-
+        var filename = filenameArg as string ?? string.Empty;
         if (rc > 0)
         {
-            var buffer = args[0] as byte[] ?? Array.Empty<byte>();
+            var buffer = bufferArg as byte[] ?? Array.Empty<byte>();
             return JvLinkReadResult.Record(buffer, filename);
         }
 
@@ -88,6 +95,7 @@ public sealed class ComJvLink : IJvLink, IDisposable
     {
         if (_instance is not null)
         {
+            _dynamicInstance = null;
             Marshal.FinalReleaseComObject(_instance);
             _instance = null;
         }
