@@ -30,7 +30,8 @@ internal sealed record RunDescriptor(
     string Dataspec,
     int Option,
     string Fromtime,
-    ResumeBehavior Resume);
+    ResumeBehavior Resume,
+    bool Quiet = false);
 
 internal static class ModeRunner
 {
@@ -58,6 +59,10 @@ internal static class ModeRunner
         name: "--sid",
         description: "Software identifier passed to JVInit.",
         getDefaultValue: () => "jvlink2db/0.1");
+
+    public static Option<bool> Quiet() => new(
+        name: "--quiet",
+        description: "Suppress per-file and per-flush progress lines on stderr.");
 
     /// <summary>
     /// Reads <c>acquisition_state.last_fromtime</c> for normal-mode resume,
@@ -106,7 +111,8 @@ internal static class ModeRunner
             token).ConfigureAwait(false);
 
         var sinks = PostgresSinkFactory.CreateAll(dataSource, run.Schema);
-        var runner = new SetupRunner(jv, dataProvisioner, sinks);
+        var progress = run.Quiet ? null : (Action<ProgressEvent>)WriteProgress;
+        var runner = new SetupRunner(jv, dataProvisioner, sinks, progress: progress);
 
         try
         {
@@ -214,4 +220,26 @@ internal static class ModeRunner
         >= -399 and <= -300 => 3,
         _ => 4,
     };
+
+    private static void WriteProgress(ProgressEvent ev)
+    {
+        switch (ev)
+        {
+            case FileCompletedEvent f:
+                Console.Error.WriteLine(
+                    $"[progress] file {f.FileIndex}/{f.TotalFiles} {f.Filename} — {f.RecordsInFile:N0} records ({f.RecordsTotal:N0} total, {Format(f.Elapsed)} elapsed)");
+                break;
+            case FlushStartedEvent s when s.BufferedRecords > 0:
+                Console.Error.WriteLine($"[progress] flush {s.RecordSpec} starting — {s.BufferedRecords:N0} buffered");
+                break;
+            case FlushCompletedEvent c when c.Inserted > 0:
+                Console.Error.WriteLine($"[progress] flush {c.RecordSpec} done — {c.Inserted:N0} merged in {Format(c.Elapsed)}");
+                break;
+        }
+    }
+
+    private static string Format(TimeSpan ts) =>
+        ts.TotalHours >= 1
+            ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
+            : $"{ts.Minutes:D2}:{ts.Seconds:D2}";
 }

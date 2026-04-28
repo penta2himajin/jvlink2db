@@ -14,6 +14,7 @@ public static class WeeklyCommand
         var operationalSchema = ModeRunner.OperationalSchema();
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
+        var quiet = ModeRunner.Quiet();
 
         var since = new Option<string>(
             name: "--since",
@@ -32,7 +33,7 @@ public static class WeeklyCommand
             "weekly",
             "This-week-only fetch (option=2). Reads only entries plus the previous week's results, not the historical archive. Pass --watch --interval <duration> to keep running on a recurring cadence.")
         {
-            connection, schema, operationalSchema, dataspec, sid, since, watch, interval,
+            connection, schema, operationalSchema, dataspec, sid, since, watch, interval, quiet,
         };
 
         cmd.SetHandler(async ctx =>
@@ -72,7 +73,8 @@ public static class WeeklyCommand
                 Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
                 Option: 2,
                 Fromtime: ctx.ParseResult.GetValueForOption(since)!,
-                Resume: ResumeBehavior.None);
+                Resume: ResumeBehavior.None,
+                Quiet: ctx.ParseResult.GetValueForOption(quiet));
 
             if (!watchValue)
             {

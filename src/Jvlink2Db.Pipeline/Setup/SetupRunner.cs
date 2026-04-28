@@ -28,13 +28,15 @@ public sealed class SetupRunner
     private readonly Dictionary<string, IRecordSink> _sinks;
     private readonly TimeSpan _pollDelay;
     private readonly JvLinkRetryPolicy _retryPolicy;
+    private readonly Action<ProgressEvent>? _progress;
 
     public SetupRunner(
         IJvLink jvLink,
         ISchemaProvisioner provisioner,
         IEnumerable<IRecordSink> sinks,
         TimeSpan? pollDelay = null,
-        JvLinkRetryPolicy? retryPolicy = null)
+        JvLinkRetryPolicy? retryPolicy = null,
+        Action<ProgressEvent>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(jvLink);
         ArgumentNullException.ThrowIfNull(provisioner);
@@ -45,6 +47,7 @@ public sealed class SetupRunner
         _sinks = sinks.ToDictionary(s => s.RecordSpec, StringComparer.Ordinal);
         _pollDelay = pollDelay ?? DefaultPollDelay;
         _retryPolicy = retryPolicy ?? new JvLinkRetryPolicy();
+        _progress = progress;
     }
 
     public async Task<SetupReport> RunAsync(SetupOptions options, CancellationToken cancellationToken)
@@ -79,12 +82,17 @@ public sealed class SetupRunner
 
             SkipPastResume(options.ResumeFromFilename);
 
-            var (counts, lastFilename) = await ReadAllAsync(cancellationToken).ConfigureAwait(false);
+            var (counts, lastFilename) = await ReadAllAsync(open.ReadCount, cancellationToken).ConfigureAwait(false);
 
             var inserted = new Dictionary<string, long>(StringComparer.Ordinal);
             foreach (var sink in _sinks.Values)
             {
-                inserted[sink.RecordSpec] = await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
+                var bufferedCount = counts.GetValueOrDefault(sink.RecordSpec);
+                _progress?.Invoke(new FlushStartedEvent(sink.RecordSpec, bufferedCount));
+                var flushStartedAt = DateTimeOffset.UtcNow;
+                var rowsInserted = await sink.FlushAsync(cancellationToken).ConfigureAwait(false);
+                _progress?.Invoke(new FlushCompletedEvent(sink.RecordSpec, rowsInserted, DateTimeOffset.UtcNow - flushStartedAt));
+                inserted[sink.RecordSpec] = rowsInserted;
             }
 
             return new SetupReport(
@@ -153,10 +161,14 @@ public sealed class SetupRunner
         }
     }
 
-    private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(CancellationToken cancellationToken)
+    private async Task<(Dictionary<string, int> Counts, string? LastFilename)> ReadAllAsync(int totalFiles, CancellationToken cancellationToken)
     {
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         string? lastFilename = null;
+        var fileIndex = 0;
+        var recordsInFile = 0;
+        var recordsTotal = 0;
+        var readStartedAt = DateTimeOffset.UtcNow;
 
         while (true)
         {
@@ -167,6 +179,8 @@ public sealed class SetupRunner
             {
                 var id = ExtractRecordId(read.Buffer);
                 counts[id] = counts.GetValueOrDefault(id) + 1;
+                recordsInFile++;
+                recordsTotal++;
                 if (!string.IsNullOrEmpty(read.Filename))
                 {
                     lastFilename = read.Filename;
@@ -183,6 +197,15 @@ public sealed class SetupRunner
             if (read.ReturnCode == -1 && !string.IsNullOrEmpty(read.Filename))
             {
                 lastFilename = read.Filename;
+                fileIndex++;
+                _progress?.Invoke(new FileCompletedEvent(
+                    Filename: read.Filename!,
+                    FileIndex: fileIndex,
+                    TotalFiles: totalFiles,
+                    RecordsInFile: recordsInFile,
+                    RecordsTotal: recordsTotal,
+                    Elapsed: DateTimeOffset.UtcNow - readStartedAt));
+                recordsInFile = 0;
             }
 
             switch (read.ReturnCode)
