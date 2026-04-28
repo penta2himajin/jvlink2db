@@ -51,20 +51,29 @@ This-week-only fetch.
 
 ## CLI surface
 
-All modes share a common CLI shape. The exact flag set is the
-configuration class's responsibility; this document shows the intent.
+All four modes share a common set of flags (`--connection`, `--schema`,
+`--dataspec`, `--sid`). Each mode adds its own time options:
 
 ```
-jvlink2db setup   --dataspec RACE --since 19860101 [--until 20260331]
-jvlink2db range   --dataspec RACE --since 20260101 --until 20260331
-jvlink2db normal  --dataspec RACE,DIFF,BLOD
-jvlink2db weekly  --dataspec RACE
+jvlink2db setup   --dataspec RACE [--since 19860101000000]
+jvlink2db range   --dataspec RACE  --since 20260101000000 --until 20260331235959
+jvlink2db normal  --dataspec RACE  --since 20260415000000
+jvlink2db weekly  --dataspec RACE  --since 20260415000000
 ```
 
-Multiple dataspecs given on the command line are processed in sequence,
-one `JVOpen` call per dataspec, never combined into a single call (see
-the `dataspec` known-issue note in
-[02-jvlink-protocol.md](./02-jvlink-protocol.md)).
+`--since` / `--until` are 14-character `YYYYMMDDhhmmss` strings; this is
+what JV-Link expects directly without normalisation.
+
+`range` rejects the snapshot-only dataspecs (`TOKU`, `DIFF`, `DIFN`,
+`HOSE`, `HOSN`, `HOYU`, `COMM`) at parse time with a typed exception
+(`DataspecRangeNotSupportedException`) and exit code `1`, rather than
+letting the COM call fail at runtime with `-113`.
+
+Multiple dataspecs in one invocation (`--dataspec RACE,DIFF,BLOD`) is
+not yet implemented; until then, one `jvlink2db` call per dataspec.
+When it lands, dataspecs will be processed in sequence — one `JVOpen`
+call each, never combined into a single call (see the `dataspec`
+known-issue note in [02-jvlink-protocol.md](./02-jvlink-protocol.md)).
 
 ## Progress and logging
 
