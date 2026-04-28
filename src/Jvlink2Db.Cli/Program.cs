@@ -20,6 +20,7 @@ public static class Program
             RangeCommand.Create(),
             NormalCommand.Create(),
             WeeklyCommand.Create(),
+            ScheduleCommand.Create(),
         };
 
         return root.InvokeAsync(args);
