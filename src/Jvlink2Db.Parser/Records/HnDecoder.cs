@@ -7,16 +7,28 @@ namespace Jvlink2Db.Parser.Records;
 public static class HnDecoder
 {
     public const string RecordSpec = "HN";
+
+    /// <summary>
+    /// Current JV-Data 4.9.0.x layout (251 bytes including 2-byte CRLF).
+    /// </summary>
     public const int RecordLength = 251;
+
+    /// <summary>
+    /// Older HN layout observed live (2026-04-29) on a non-trivial fraction
+    /// of records: <c>SanchiName</c> is 15 bytes instead of 20, shrinking
+    /// the rest of the record by 5 bytes. The header / leading fields are
+    /// identical; only fields past offset 210 shift.
+    /// </summary>
+    public const int LegacyRecordLength = 246;
 
     public static Hn Decode(byte[] buffer)
     {
         ArgumentNullException.ThrowIfNull(buffer);
 
-        if (buffer.Length < RecordLength)
+        if (buffer.Length < LegacyRecordLength)
         {
             throw new ArgumentException(
-                $"HN record requires at least {RecordLength} bytes, got {buffer.Length}.", nameof(buffer));
+                $"HN record requires at least {LegacyRecordLength} bytes, got {buffer.Length}.", nameof(buffer));
         }
 
         var span = new ReadOnlySpan<byte>(buffer);
@@ -26,6 +38,13 @@ public static class HnDecoder
             throw new InvalidOperationException(
                 $"Buffer is not an HN record. Expected '{RecordSpec}', got '{actualSpec}'.");
         }
+
+        // Layout switch: shorter SanchiName in the legacy layout pushes
+        // the trailing two HansyokuNum fields up by 5 bytes.
+        var isLegacy = buffer.Length < RecordLength;
+        var sanchiNameLength = isLegacy ? 15 : 20;
+        var hansyokuFNumOffset = 210 + sanchiNameLength;       // 225 (legacy) or 230 (current)
+        var hansyokuMNumOffset = hansyokuFNumOffset + 10;      // 235 or 240
 
         return new Hn
         {
@@ -46,9 +65,9 @@ public static class HnDecoder
             KeiroCD = Read(span, 203, 2),
             HansyokuMochiKubun = Read(span, 205, 1),
             ImportYear = Read(span, 206, 4),
-            SanchiName = Read(span, 210, 20),
-            HansyokuFNum = Read(span, 230, 10),
-            HansyokuMNum = Read(span, 240, 10),
+            SanchiName = Read(span, 210, sanchiNameLength),
+            HansyokuFNum = Read(span, hansyokuFNumOffset, 10),
+            HansyokuMNum = Read(span, hansyokuMNumOffset, 10),
         };
     }
 
