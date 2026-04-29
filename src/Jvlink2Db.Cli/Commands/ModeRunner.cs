@@ -27,11 +27,12 @@ internal sealed record RunDescriptor(
     string Schema,
     string OperationalSchema,
     string Sid,
-    string Dataspec,
+    IReadOnlyList<string> Dataspecs,
     int Option,
-    string Fromtime,
+    string? Fromtime,
     ResumeBehavior Resume,
     bool Quiet = false);
+
 
 internal static class ModeRunner
 {
@@ -52,7 +53,7 @@ internal static class ModeRunner
 
     public static Option<string> Dataspec() => new(
         name: "--dataspec",
-        description: "Dataspec ID, e.g. RACE, DIFN, BLOD.")
+        description: "Dataspec ID(s), comma-separated for batch (e.g. RACE,DIFN,SLOP,WOOD). One JV-Link COM session is reused across the list.")
     { IsRequired = true };
 
     public static Option<string> Sid() => new(
@@ -89,6 +90,12 @@ internal static class ModeRunner
     {
         var token = ctx.GetCancellationToken();
         await using var dataSource = NpgsqlDataSource.Create(run.Connection);
+
+        // One ComJvLink (one JVInit, one COM activation) is shared across
+        // every dataspec in the batch. Each per-dataspec call cycles
+        // through JVOpen → JVRead* → JVClose without re-initializing the
+        // COM library, so first-call dialogs JV-Link triggers per process
+        // launch don't fire again.
         using var jv = new ComJvLink();
 
         var dataProvisioner = new PostgresSchemaProvisioner(dataSource, run.Schema);
@@ -98,29 +105,82 @@ internal static class ModeRunner
 
         await operationalProvisioner.EnsureCreatedAsync(token).ConfigureAwait(false);
 
-        string? resumeFromFilename = null;
-        if (run.Resume == ResumeBehavior.SetupIncremental)
-        {
-            var saved = await stateStore.GetAsync(run.Dataspec, run.Option, token).ConfigureAwait(false);
-            resumeFromFilename = saved?.LastFilename;
-        }
-
-        var startedAt = DateTimeOffset.UtcNow;
-        var historyId = await historyStore.StartAsync(
-            new RunHistoryStart(run.Mode, run.Dataspec, run.Option, run.Fromtime, startedAt),
-            token).ConfigureAwait(false);
-
         var sinks = PostgresSinkFactory.CreateAll(dataSource, run.Schema);
         var progress = run.Quiet ? null : (Action<ProgressEvent>)WriteProgress;
         var runner = new SetupRunner(jv, dataProvisioner, sinks, progress: progress);
 
+        var worstExitCode = 0;
+        var first = true;
+        foreach (var dataspec in run.Dataspecs)
+        {
+            if (!first)
+            {
+                Console.WriteLine();
+            }
+            first = false;
+            if (run.Dataspecs.Count > 1)
+            {
+                Console.WriteLine($"=== {run.Mode} {dataspec} ===");
+            }
+
+            var exit = await ProcessOneDataspecAsync(
+                run, dataspec, stateStore, historyStore, runner, token).ConfigureAwait(false);
+            if (exit != 0)
+            {
+                worstExitCode = exit;
+            }
+        }
+
+        ctx.ExitCode = worstExitCode;
+    }
+
+    private static async Task<int> ProcessOneDataspecAsync(
+        RunDescriptor run,
+        string dataspec,
+        PostgresAcquisitionStateStore stateStore,
+        PostgresRunHistoryStore historyStore,
+        SetupRunner runner,
+        CancellationToken token)
+    {
+        string? resumeFromFilename = null;
+        var fromtime = run.Fromtime;
+
+        if (run.Resume == ResumeBehavior.SetupIncremental)
+        {
+            var saved = await stateStore.GetAsync(dataspec, run.Option, token).ConfigureAwait(false);
+            resumeFromFilename = saved?.LastFilename;
+        }
+        else if (run.Resume == ResumeBehavior.NormalIncremental && string.IsNullOrEmpty(fromtime))
+        {
+            // Per-dataspec resume: each dataspec has its own last_fromtime.
+            var saved = await stateStore.GetAsync(dataspec, run.Option, token).ConfigureAwait(false);
+            fromtime = saved?.LastFromtime;
+            if (string.IsNullOrEmpty(fromtime))
+            {
+                Console.Error.WriteLine(
+                    $"normal ({dataspec}): --since is required on the first run for this dataspec (no acquisition_state row yet). Run `setup --dataspec {dataspec}` first or pass --since explicitly.");
+                return 1;
+            }
+        }
+
+        if (string.IsNullOrEmpty(fromtime))
+        {
+            Console.Error.WriteLine($"({dataspec}): fromtime is required.");
+            return 1;
+        }
+
+        var startedAt = DateTimeOffset.UtcNow;
+        var historyId = await historyStore.StartAsync(
+            new RunHistoryStart(run.Mode, dataspec, run.Option, fromtime, startedAt),
+            token).ConfigureAwait(false);
+
         try
         {
             var report = await runner.RunAsync(
-                new SetupOptions(run.Sid, run.Dataspec, run.Fromtime, run.Option, resumeFromFilename),
+                new SetupOptions(run.Sid, dataspec, fromtime, run.Option, resumeFromFilename),
                 token).ConfigureAwait(false);
 
-            await PersistResumeStateAsync(stateStore, run, report, token).ConfigureAwait(false);
+            await PersistResumeStateAsync(stateStore, dataspec, run, report, token).ConfigureAwait(false);
 
             await historyStore.FinishAsync(historyId, new RunHistoryFinish(
                 FinishedAt: DateTimeOffset.UtcNow,
@@ -134,23 +194,25 @@ internal static class ModeRunner
                 ErrorMessage: null), token).ConfigureAwait(false);
 
             PrintReport(report, run.Schema);
-            ctx.ExitCode = 0;
+            return 0;
         }
         catch (JvLinkException ex)
         {
-            await historyStore.FinishAsync(historyId, FailureFinish(ex.Message, openReturnCode: null), token).ConfigureAwait(false);
-            Console.Error.WriteLine($"JV-Link error: {ex.Method} returned {ex.ReturnCode}");
-            ctx.ExitCode = ExitCodeFor(ex.ReturnCode);
+            await historyStore.FinishAsync(historyId, FailureFinish(ex.Message, openReturnCode: ex.ReturnCode), token).ConfigureAwait(false);
+            Console.Error.WriteLine($"JV-Link error ({dataspec}): {ex.Method} returned {ex.ReturnCode}");
+            return ExitCodeFor(ex.ReturnCode);
         }
         catch (Exception ex)
         {
             await historyStore.FinishAsync(historyId, FailureFinish(ex.Message, openReturnCode: null), token).ConfigureAwait(false);
-            throw;
+            Console.Error.WriteLine($"Error ({dataspec}): {ex.GetType().Name}: {ex.Message}");
+            return 4;
         }
     }
 
     private static async Task PersistResumeStateAsync(
         IAcquisitionStateStore store,
+        string dataspec,
         RunDescriptor run,
         SetupReport report,
         CancellationToken cancellationToken)
@@ -164,12 +226,12 @@ internal static class ModeRunner
         {
             case ResumeBehavior.NormalIncremental when !string.IsNullOrEmpty(report.LastFileTimestamp):
                 await store.UpsertAsync(
-                    new AcquisitionState(run.Dataspec, run.Option, report.LastFileTimestamp, LastFilename: null),
+                    new AcquisitionState(dataspec, run.Option, report.LastFileTimestamp, LastFilename: null),
                     cancellationToken).ConfigureAwait(false);
                 break;
             case ResumeBehavior.SetupIncremental when !string.IsNullOrEmpty(report.LastConsumedFilename):
                 await store.UpsertAsync(
-                    new AcquisitionState(run.Dataspec, run.Option, LastFromtime: null, report.LastConsumedFilename),
+                    new AcquisitionState(dataspec, run.Option, LastFromtime: null, report.LastConsumedFilename),
                     cancellationToken).ConfigureAwait(false);
                 break;
         }

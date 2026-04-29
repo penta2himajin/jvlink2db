@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Jvlink2Db.Pipeline.Setup;
 
 namespace Jvlink2Db.Cli.Commands;
 
@@ -35,7 +36,7 @@ public static class SetupCommand
                 Schema: ctx.ParseResult.GetValueForOption(schema)!,
                 OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
                 Sid: ctx.ParseResult.GetValueForOption(sid)!,
-                Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
+                Dataspecs: DataspecParser.Split(ctx.ParseResult.GetValueForOption(dataspec)!),
                 Option: 4,
                 Fromtime: ctx.ParseResult.GetValueForOption(since)!,
                 Resume: ResumeBehavior.SetupIncremental,

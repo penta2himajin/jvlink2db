@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.Threading.Tasks;
 using Jvlink2Db.Pipeline.Setup;
@@ -36,11 +37,22 @@ public static class RangeCommand
         cmd.SetHandler(async ctx =>
         {
             var dataspecValue = ctx.ParseResult.GetValueForOption(dataspec)!;
+            IReadOnlyList<string> dataspecs;
             try
             {
-                DataspecValidator.EnsureRangeAllowed(dataspecValue);
+                dataspecs = DataspecParser.Split(dataspecValue);
+                foreach (var ds in dataspecs)
+                {
+                    DataspecValidator.EnsureRangeAllowed(ds);
+                }
             }
             catch (DataspecRangeNotSupportedException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                ctx.ExitCode = 1;
+                return;
+            }
+            catch (ArgumentException ex)
             {
                 Console.Error.WriteLine(ex.Message);
                 ctx.ExitCode = 1;
@@ -56,7 +68,7 @@ public static class RangeCommand
                 Schema: ctx.ParseResult.GetValueForOption(schema)!,
                 OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
                 Sid: ctx.ParseResult.GetValueForOption(sid)!,
-                Dataspec: dataspecValue,
+                Dataspecs: dataspecs,
                 Option: 4,
                 Fromtime: $"{sinceValue}-{untilValue}",
                 Resume: ResumeBehavior.None,
