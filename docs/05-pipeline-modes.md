@@ -69,11 +69,13 @@ what JV-Link expects directly without normalisation.
 (`DataspecRangeNotSupportedException`) and exit code `1`, rather than
 letting the COM call fail at runtime with `-113`.
 
-Multiple dataspecs in one invocation (`--dataspec RACE,DIFF,BLOD`) is
-not yet implemented; until then, one `jvlink2db` call per dataspec.
-When it lands, dataspecs will be processed in sequence — one `JVOpen`
-call each, never combined into a single call (see the `dataspec`
-known-issue note in [02-jvlink-protocol.md](./02-jvlink-protocol.md)).
+Multiple dataspecs in one invocation (`--dataspec RACE,DIFN,SLOP`)
+are processed in sequence — one `JVOpen` call each, never combined
+into a single call (see the `dataspec` known-issue note in
+[02-jvlink-protocol.md](./02-jvlink-protocol.md)). One `JVInit` and
+one COM activation are reused across the batch, so first-launch
+dialogs JV-Link sometimes triggers per-process don't fire again
+between dataspecs.
 
 ## Recurring execution
 

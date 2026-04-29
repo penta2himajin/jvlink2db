@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.Threading.Tasks;
+using Jvlink2Db.Pipeline.Setup;
 using Jvlink2Db.Pipeline.Watch;
 
 namespace Jvlink2Db.Cli.Commands;
@@ -64,13 +66,25 @@ public static class WeeklyCommand
                 }
             }
 
+            IReadOnlyList<string> dataspecs;
+            try
+            {
+                dataspecs = DataspecParser.Split(ctx.ParseResult.GetValueForOption(dataspec)!);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                ctx.ExitCode = 1;
+                return;
+            }
+
             var descriptor = new RunDescriptor(
                 Mode: "weekly",
                 Connection: ctx.ParseResult.GetValueForOption(connection)!,
                 Schema: ctx.ParseResult.GetValueForOption(schema)!,
                 OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
                 Sid: ctx.ParseResult.GetValueForOption(sid)!,
-                Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
+                Dataspecs: dataspecs,
                 Option: 2,
                 Fromtime: ctx.ParseResult.GetValueForOption(since)!,
                 Resume: ResumeBehavior.None,

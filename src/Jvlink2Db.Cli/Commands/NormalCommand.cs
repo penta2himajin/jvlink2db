@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.Threading.Tasks;
+using Jvlink2Db.Pipeline.Setup;
 using Jvlink2Db.Pipeline.Watch;
 
 namespace Jvlink2Db.Cli.Commands;
@@ -18,7 +20,7 @@ public static class NormalCommand
 
         var since = new Option<string?>(
             name: "--since",
-            description: "Start of fromtime, YYYYMMDDhhmmss. If omitted, resumes from acquisition_state.last_fromtime.");
+            description: "Start of fromtime, YYYYMMDDhhmmss. If omitted, each dataspec resumes from acquisition_state.last_fromtime.");
 
         var watch = new Option<bool>(
             name: "--watch",
@@ -30,7 +32,7 @@ public static class NormalCommand
 
         var cmd = new Command(
             "normal",
-            "Incremental update (option=1). Resumes from acquisition_state.last_fromtime if --since is omitted; saves the new last_fromtime on success. Pass --watch --interval <duration> to keep running on a recurring cadence.")
+            "Incremental update (option=1). Each dataspec resumes from its own acquisition_state.last_fromtime if --since is omitted; saves the new last_fromtime on success. Pass --watch --interval <duration> to keep running on a recurring cadence.")
         {
             connection, schema, operationalSchema, dataspec, sid, since, watch, interval, quiet,
         };
@@ -38,12 +40,22 @@ public static class NormalCommand
         cmd.SetHandler(async ctx =>
         {
             var token = ctx.GetCancellationToken();
-            var connectionValue = ctx.ParseResult.GetValueForOption(connection)!;
-            var operationalSchemaValue = ctx.ParseResult.GetValueForOption(operationalSchema)!;
             var dataspecValue = ctx.ParseResult.GetValueForOption(dataspec)!;
             var sinceArg = ctx.ParseResult.GetValueForOption(since);
             var watchValue = ctx.ParseResult.GetValueForOption(watch);
             var intervalArg = ctx.ParseResult.GetValueForOption(interval);
+
+            IReadOnlyList<string> dataspecs;
+            try
+            {
+                dataspecs = DataspecParser.Split(dataspecValue);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                ctx.ExitCode = 1;
+                return;
+            }
 
             TimeSpan? intervalValue = null;
             if (watchValue)
@@ -67,41 +79,21 @@ public static class NormalCommand
                 }
             }
 
-            async Task<bool> RunOnceAsync()
-            {
-                var resolvedSince = sinceArg;
-                if (string.IsNullOrEmpty(resolvedSince))
-                {
-                    var saved = await ModeRunner.LookupStateAsync(connectionValue, operationalSchemaValue, dataspecValue, option: 1, token).ConfigureAwait(false);
-                    resolvedSince = saved?.LastFromtime;
-
-                    if (string.IsNullOrEmpty(resolvedSince))
-                    {
-                        Console.Error.WriteLine("normal: --since is required on the first run for this dataspec (no acquisition_state row yet).");
-                        return false;
-                    }
-                }
-
-                await ModeRunner.ExecuteAsync(ctx, new RunDescriptor(
-                    Mode: "normal",
-                    Connection: connectionValue,
-                    Schema: ctx.ParseResult.GetValueForOption(schema)!,
-                    OperationalSchema: operationalSchemaValue,
-                    Sid: ctx.ParseResult.GetValueForOption(sid)!,
-                    Dataspec: dataspecValue,
-                    Option: 1,
-                    Fromtime: resolvedSince,
-                    Resume: ResumeBehavior.NormalIncremental,
-                    Quiet: ctx.ParseResult.GetValueForOption(quiet))).ConfigureAwait(false);
-                return true;
-            }
+            var descriptor = new RunDescriptor(
+                Mode: "normal",
+                Connection: ctx.ParseResult.GetValueForOption(connection)!,
+                Schema: ctx.ParseResult.GetValueForOption(schema)!,
+                OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
+                Sid: ctx.ParseResult.GetValueForOption(sid)!,
+                Dataspecs: dataspecs,
+                Option: 1,
+                Fromtime: sinceArg,  // null → per-dataspec resume from acquisition_state
+                Resume: ResumeBehavior.NormalIncremental,
+                Quiet: ctx.ParseResult.GetValueForOption(quiet));
 
             if (!watchValue)
             {
-                if (!await RunOnceAsync().ConfigureAwait(false))
-                {
-                    ctx.ExitCode = 1;
-                }
+                await ModeRunner.ExecuteAsync(ctx, descriptor).ConfigureAwait(false);
                 return;
             }
 
@@ -111,7 +103,7 @@ public static class NormalCommand
                     Console.Error.WriteLine($"[watch cycle {cycle}] {ex.GetType().Name}: {ex.Message}"));
 
             await watchRunner.RunAsync(
-                async _ => { await RunOnceAsync().ConfigureAwait(false); },
+                async _ => await ModeRunner.ExecuteAsync(ctx, descriptor).ConfigureAwait(false),
                 intervalValue!.Value,
                 token).ConfigureAwait(false);
 
