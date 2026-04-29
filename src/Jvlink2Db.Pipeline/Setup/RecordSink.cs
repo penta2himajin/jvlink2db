@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Jvlink2Db.Core.Persistence;
+using Jvlink2Db.Parser.Records;
 
 namespace Jvlink2Db.Pipeline.Setup;
 
@@ -28,10 +29,24 @@ public sealed class RecordSink<TRecord> : IRecordSink
 
     public int BufferedCount => _records.Count;
 
+    public int SkippedCount { get; private set; }
+
     public void Add(byte[] buffer)
     {
         ArgumentNullException.ThrowIfNull(buffer);
-        _records.Add(_decode(buffer));
+        try
+        {
+            _records.Add(_decode(buffer));
+        }
+        catch (RecordTooShortException)
+        {
+            // The decoder doesn't have a layout for buffers this short.
+            // Common cause: the upstream service is delivering an older
+            // spec version than the SDK we built decoders against. Skip
+            // and surface the count in the run report so the user can
+            // decide whether the missed rows matter.
+            SkippedCount++;
+        }
     }
 
     public void ClearBuffer() => _records.Clear();

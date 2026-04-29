@@ -12,7 +12,8 @@ public sealed record SetupReport(
     IReadOnlyDictionary<string, long> RecordsInsertedById,
     string? LastConsumedFilename = null,
     IReadOnlyDictionary<string, TimeSpan>? FlushDurationByRecordSpec = null,
-    TimeSpan ReadDuration = default)
+    TimeSpan ReadDuration = default,
+    IReadOnlyDictionary<string, int>? SkippedByRecordSpec = null)
 {
     public long RaInserted => RecordsInsertedById.TryGetValue("RA", out var v) ? v : 0;
 }
