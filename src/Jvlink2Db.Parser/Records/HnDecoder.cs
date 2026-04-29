@@ -27,8 +27,7 @@ public static class HnDecoder
 
         if (buffer.Length < LegacyRecordLength)
         {
-            throw new ArgumentException(
-                $"HN record requires at least {LegacyRecordLength} bytes, got {buffer.Length}.", nameof(buffer));
+            throw new RecordTooShortException(RecordSpec, buffer.Length, LegacyRecordLength);
         }
 
         var span = new ReadOnlySpan<byte>(buffer);

@@ -100,6 +100,15 @@ public sealed class SetupRunner
                 await FlushSinkAsync(sink, inserted, flushDurations, cancellationToken).ConfigureAwait(false);
             }
 
+            var skipped = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var sink in _sinks.Values)
+            {
+                if (sink.SkippedCount > 0)
+                {
+                    skipped[sink.RecordSpec] = sink.SkippedCount;
+                }
+            }
+
             return new SetupReport(
                 OpenReturnCode: open.ReturnCode,
                 ReadCount: open.ReadCount,
@@ -109,7 +118,8 @@ public sealed class SetupRunner
                 RecordsInsertedById: inserted,
                 LastConsumedFilename: lastFilename,
                 FlushDurationByRecordSpec: flushDurations,
-                ReadDuration: readDuration);
+                ReadDuration: readDuration,
+                SkippedByRecordSpec: skipped);
         }
         finally
         {

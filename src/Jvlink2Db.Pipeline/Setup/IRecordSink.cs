@@ -14,6 +14,13 @@ public interface IRecordSink
 
     int BufferedCount { get; }
 
+    /// <summary>
+    /// Number of records the sink has dropped because the decoder
+    /// couldn't decode the buffer (e.g. legacy spec format). Reported
+    /// at end of run; never causes the run itself to fail.
+    /// </summary>
+    int SkippedCount { get; }
+
     void Add(byte[] buffer);
 
     /// <summary>

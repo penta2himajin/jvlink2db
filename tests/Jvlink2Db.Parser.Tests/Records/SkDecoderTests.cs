@@ -10,8 +10,10 @@ public class SkDecoderTests
     [Fact]
     public void Decode_throws_when_buffer_is_too_short()
     {
-        var ex = Assert.Throws<ArgumentException>(() => SkDecoder.Decode(new byte[207]));
-        Assert.Contains("208", ex.Message);
+        var ex = Assert.Throws<RecordTooShortException>(() => SkDecoder.Decode(new byte[207]));
+        Assert.Equal("SK", ex.RecordSpec);
+        Assert.Equal(207, ex.ActualLength);
+        Assert.Equal(208, ex.RequiredLength);
     }
 
     [Fact]

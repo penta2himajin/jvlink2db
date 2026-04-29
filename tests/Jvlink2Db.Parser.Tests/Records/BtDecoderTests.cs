@@ -10,8 +10,10 @@ public class BtDecoderTests
     [Fact]
     public void Decode_throws_when_buffer_is_too_short()
     {
-        var ex = Assert.Throws<ArgumentException>(() => BtDecoder.Decode(new byte[6888]));
-        Assert.Contains("6889", ex.Message);
+        var ex = Assert.Throws<RecordTooShortException>(() => BtDecoder.Decode(new byte[6888]));
+        Assert.Equal("BT", ex.RecordSpec);
+        Assert.Equal(6888, ex.ActualLength);
+        Assert.Equal(6889, ex.RequiredLength);
     }
 
     [Fact]

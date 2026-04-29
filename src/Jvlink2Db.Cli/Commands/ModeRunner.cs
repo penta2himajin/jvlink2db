@@ -270,7 +270,7 @@ internal static class ModeRunner
         }
         Console.WriteLine();
 
-        Console.WriteLine("Record counts by ID (read / inserted / flush):");
+        Console.WriteLine("Record counts by ID (read / inserted / flush / skipped):");
         if (report.RecordCountsById.Count == 0)
         {
             Console.WriteLine("  (no records)");
@@ -284,7 +284,11 @@ internal static class ModeRunner
                         && report.FlushDurationByRecordSpec.TryGetValue(kv.Key, out var d)
                 ? Format(d)
                 : "-";
-            Console.WriteLine($"  {kv.Key}: {kv.Value:N0} / {inserted} / {flush}");
+            var skipped = report.SkippedByRecordSpec is not null
+                          && report.SkippedByRecordSpec.TryGetValue(kv.Key, out var sk) && sk > 0
+                ? sk.ToString("N0")
+                : "0";
+            Console.WriteLine($"  {kv.Key}: {kv.Value:N0} / {inserted} / {flush} / {skipped}");
         }
     }
 

@@ -11,8 +11,10 @@ public class HnDecoderTests
     [Fact]
     public void Decode_throws_when_buffer_is_shorter_than_legacy_minimum()
     {
-        var ex = Assert.Throws<ArgumentException>(() => HnDecoder.Decode(new byte[245]));
-        Assert.Contains("246", ex.Message);
+        var ex = Assert.Throws<RecordTooShortException>(() => HnDecoder.Decode(new byte[245]));
+        Assert.Equal("HN", ex.RecordSpec);
+        Assert.Equal(245, ex.ActualLength);
+        Assert.Equal(246, ex.RequiredLength);
     }
 
     [Fact]

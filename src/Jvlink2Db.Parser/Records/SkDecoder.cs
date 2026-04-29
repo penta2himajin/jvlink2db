@@ -15,8 +15,7 @@ public static class SkDecoder
 
         if (buffer.Length < RecordLength)
         {
-            throw new ArgumentException(
-                $"SK record requires at least {RecordLength} bytes, got {buffer.Length}.", nameof(buffer));
+            throw new RecordTooShortException(RecordSpec, buffer.Length, RecordLength);
         }
 
         var span = new ReadOnlySpan<byte>(buffer);
