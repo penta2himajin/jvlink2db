@@ -31,7 +31,8 @@ internal sealed record RunDescriptor(
     int Option,
     string? Fromtime,
     ResumeBehavior Resume,
-    bool Quiet = false);
+    bool Quiet = false,
+    string? ReaderRole = null);
 
 
 internal static class ModeRunner
@@ -65,6 +66,11 @@ internal static class ModeRunner
         name: "--quiet",
         description: "Suppress per-file and per-flush progress lines on stderr.");
 
+    public static Option<string?> ReaderRole() => new(
+        name: "--reader-role",
+        description: "PostgreSQL role to grant read access (USAGE on schema, SELECT on existing and future tables) on provisioning. Empty or unset disables auto-grant.",
+        getDefaultValue: () => null);
+
     /// <summary>
     /// Reads <c>acquisition_state.last_fromtime</c> for normal-mode resume,
     /// or <c>last_filename</c> for setup-mode resume. Provisions the
@@ -75,10 +81,11 @@ internal static class ModeRunner
         string operationalSchema,
         string dataspec,
         int option,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? readerRole = null)
     {
         await using var dataSource = NpgsqlDataSource.Create(connection);
-        await new PostgresOperationalSchemaProvisioner(dataSource, operationalSchema)
+        await new PostgresOperationalSchemaProvisioner(dataSource, operationalSchema, readerRole)
             .EnsureCreatedAsync(cancellationToken).ConfigureAwait(false);
         return await new PostgresAcquisitionStateStore(dataSource, operationalSchema)
             .GetAsync(dataspec, option, cancellationToken).ConfigureAwait(false);
@@ -98,8 +105,8 @@ internal static class ModeRunner
         // launch don't fire again.
         using var jv = new ComJvLink();
 
-        var dataProvisioner = new PostgresSchemaProvisioner(dataSource, run.Schema);
-        var operationalProvisioner = new PostgresOperationalSchemaProvisioner(dataSource, run.OperationalSchema);
+        var dataProvisioner = new PostgresSchemaProvisioner(dataSource, run.Schema, run.ReaderRole);
+        var operationalProvisioner = new PostgresOperationalSchemaProvisioner(dataSource, run.OperationalSchema, run.ReaderRole);
         var stateStore = new PostgresAcquisitionStateStore(dataSource, run.OperationalSchema);
         var historyStore = new PostgresRunHistoryStore(dataSource, run.OperationalSchema);
 

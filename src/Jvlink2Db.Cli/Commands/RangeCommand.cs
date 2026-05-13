@@ -16,6 +16,7 @@ public static class RangeCommand
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
         var quiet = ModeRunner.Quiet();
+        var readerRole = ModeRunner.ReaderRole();
 
         var since = new Option<string>(
             name: "--since",
@@ -31,7 +32,7 @@ public static class RangeCommand
             "range",
             "Bounded historical load (option=4, range fromtime). Snapshot dataspecs (TOKU/DIFF/DIFN/HOSE/HOSN/HOYU/COMM) are rejected. No resume — re-running the same window is idempotent through ON CONFLICT.")
         {
-            connection, schema, operationalSchema, dataspec, sid, since, until, quiet,
+            connection, schema, operationalSchema, dataspec, sid, since, until, quiet, readerRole,
         };
 
         cmd.SetHandler(async ctx =>
@@ -72,7 +73,8 @@ public static class RangeCommand
                 Option: 4,
                 Fromtime: $"{sinceValue}-{untilValue}",
                 Resume: ResumeBehavior.None,
-                Quiet: ctx.ParseResult.GetValueForOption(quiet))).ConfigureAwait(false);
+                Quiet: ctx.ParseResult.GetValueForOption(quiet),
+                ReaderRole: ctx.ParseResult.GetValueForOption(readerRole))).ConfigureAwait(false);
         });
 
         return cmd;

@@ -55,7 +55,148 @@ public sealed class PostgresSchemaProvisionerTests
         Assert.Equal(new[] { "year", "month_day", "jyo_cd", "kaiji", "nichiji", "race_num" }, pkCols);
     }
 
+    [Fact]
+    public async Task EnsureCreatedAsync_grants_usage_and_select_to_reader_role()
+    {
+        var schemaName = NewSchemaName();
+        var readerRole = NewRoleName();
+        await CreateRole(readerRole);
+        try
+        {
+            var sut = new PostgresSchemaProvisioner(_fixture.DataSource, schemaName, readerRole);
+
+            await sut.EnsureCreatedAsync(CancellationToken.None);
+
+            Assert.True(await HasSchemaPrivilege(readerRole, schemaName, "USAGE"));
+            Assert.True(await HasTablePrivilege(readerRole, schemaName, "ra", "SELECT"));
+        }
+        finally
+        {
+            await DropRole(readerRole);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureCreatedAsync_default_privileges_cover_tables_created_after_provisioning()
+    {
+        var schemaName = NewSchemaName();
+        var readerRole = NewRoleName();
+        await CreateRole(readerRole);
+        try
+        {
+            var sut = new PostgresSchemaProvisioner(_fixture.DataSource, schemaName, readerRole);
+            await sut.EnsureCreatedAsync(CancellationToken.None);
+
+            // Simulate a future table created by the same role that provisioned
+            // the schema (which is what jvlink2db re-runs do for new record
+            // types or schema migrations).
+            await ExecuteAsync($"CREATE TABLE \"{schemaName}\".future_table (id int)");
+
+            Assert.True(await HasTablePrivilege(readerRole, schemaName, "future_table", "SELECT"));
+        }
+        finally
+        {
+            await DropRole(readerRole);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureCreatedAsync_does_not_grant_when_reader_role_is_null()
+    {
+        var schemaName = NewSchemaName();
+        var readerRole = NewRoleName();
+        await CreateRole(readerRole);
+        try
+        {
+            var sut = new PostgresSchemaProvisioner(_fixture.DataSource, schemaName, readerRoleName: null);
+
+            await sut.EnsureCreatedAsync(CancellationToken.None);
+
+            Assert.False(await HasSchemaPrivilege(readerRole, schemaName, "USAGE"));
+            Assert.False(await HasTablePrivilege(readerRole, schemaName, "ra", "SELECT"));
+        }
+        finally
+        {
+            await DropRole(readerRole);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureCreatedAsync_is_idempotent_with_reader_role()
+    {
+        var schemaName = NewSchemaName();
+        var readerRole = NewRoleName();
+        await CreateRole(readerRole);
+        try
+        {
+            var sut = new PostgresSchemaProvisioner(_fixture.DataSource, schemaName, readerRole);
+
+            await sut.EnsureCreatedAsync(CancellationToken.None);
+            // Second invocation must not throw on the GRANT statements.
+            await sut.EnsureCreatedAsync(CancellationToken.None);
+
+            Assert.True(await HasSchemaPrivilege(readerRole, schemaName, "USAGE"));
+            Assert.True(await HasTablePrivilege(readerRole, schemaName, "ra", "SELECT"));
+        }
+        finally
+        {
+            await DropRole(readerRole);
+        }
+    }
+
     private static string NewSchemaName() => $"jv_{System.Guid.NewGuid():N}";
+
+    private static string NewRoleName() => $"reader_{System.Guid.NewGuid():N}";
+
+    private async Task CreateRole(string roleName)
+    {
+        await ExecuteAsync($"CREATE ROLE \"{roleName}\"");
+    }
+
+    private async Task DropRole(string roleName)
+    {
+        // REASSIGN/DROP OWNED is needed because DEFAULT PRIVILEGES entries
+        // pin the role even though the role itself owns no objects.
+        try
+        {
+            await ExecuteAsync($"DROP OWNED BY \"{roleName}\"");
+        }
+        catch
+        {
+            // Best-effort; a clean DROP ROLE below will still surface the
+            // real error if any objects remain.
+        }
+        await ExecuteAsync($"DROP ROLE IF EXISTS \"{roleName}\"");
+    }
+
+    private async Task ExecuteAsync(string sql)
+    {
+        await using var conn = await _fixture.DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private async Task<bool> HasSchemaPrivilege(string roleName, string schemaName, string privilege)
+    {
+        await using var conn = await _fixture.DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT has_schema_privilege(@r, @s, @p)", conn);
+        cmd.Parameters.AddWithValue("r", roleName);
+        cmd.Parameters.AddWithValue("s", schemaName);
+        cmd.Parameters.AddWithValue("p", privilege);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    private async Task<bool> HasTablePrivilege(string roleName, string schemaName, string tableName, string privilege)
+    {
+        await using var conn = await _fixture.DataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT has_table_privilege(@r, @qualified, @p)", conn);
+        cmd.Parameters.AddWithValue("r", roleName);
+        cmd.Parameters.AddWithValue("qualified", $"\"{schemaName}\".\"{tableName}\"");
+        cmd.Parameters.AddWithValue("p", privilege);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
+    }
 
     private async Task<bool> SchemaExists(string schemaName)
     {

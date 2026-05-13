@@ -25,12 +25,17 @@ public sealed class PostgresSchemaProvisioner : ISchemaProvisioner
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schemaName;
+    private readonly string? _readerRoleName;
 
-    public PostgresSchemaProvisioner(NpgsqlDataSource dataSource, string? schemaName = null)
+    public PostgresSchemaProvisioner(
+        NpgsqlDataSource dataSource,
+        string? schemaName = null,
+        string? readerRoleName = null)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         _dataSource = dataSource;
         _schemaName = schemaName ?? DefaultSchemaName;
+        _readerRoleName = string.IsNullOrWhiteSpace(readerRoleName) ? null : readerRoleName;
     }
 
     public string SchemaName => _schemaName;
@@ -38,22 +43,56 @@ public sealed class PostgresSchemaProvisioner : ISchemaProvisioner
     public async Task EnsureCreatedAsync(CancellationToken cancellationToken)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        var quoted = QuoteIdentifier(_schemaName);
+        var quotedSchema = QuoteIdentifier(_schemaName);
 
-        await using (var cmd = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS {quoted}", conn))
+        await using (var cmd = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS {quotedSchema}", conn))
         {
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await using (var cmd = new NpgsqlCommand($"SET search_path TO {quoted}", conn))
+        await using (var cmd = new NpgsqlCommand($"SET search_path TO {quotedSchema}", conn))
         {
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Set DEFAULT PRIVILEGES BEFORE running the DDL so tables created
+        // below inherit SELECT for the reader role automatically. GRANT
+        // USAGE here lets the reader enter the schema even before tables
+        // exist (useful for list_tables-style discovery).
+        if (_readerRoleName is not null)
+        {
+            var quotedRole = QuoteIdentifier(_readerRoleName);
+
+            await using (var cmd = new NpgsqlCommand(
+                $"GRANT USAGE ON SCHEMA {quotedSchema} TO {quotedRole}", conn))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await using (var cmd = new NpgsqlCommand(
+                $"ALTER DEFAULT PRIVILEGES IN SCHEMA {quotedSchema} GRANT SELECT ON TABLES TO {quotedRole}",
+                conn))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         foreach (var resource in DiscoverDdlResources())
         {
             var ddl = ReadEmbeddedDdl(resource);
             await using var cmd = new NpgsqlCommand(ddl, conn);
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Cover any tables that pre-existed the DEFAULT PRIVILEGES call
+        // above (e.g. legacy schemas provisioned before this feature was
+        // added, or tables created by a role other than the current one).
+        // Idempotent: a re-GRANT on already-granted tables is a no-op.
+        if (_readerRoleName is not null)
+        {
+            var quotedRole = QuoteIdentifier(_readerRoleName);
+            await using var cmd = new NpgsqlCommand(
+                $"GRANT SELECT ON ALL TABLES IN SCHEMA {quotedSchema} TO {quotedRole}", conn);
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }

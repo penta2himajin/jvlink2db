@@ -15,6 +15,7 @@ public static class SetupCommand
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
         var quiet = ModeRunner.Quiet();
+        var readerRole = ModeRunner.ReaderRole();
 
         var since = new Option<string>(
             name: "--since",
@@ -25,7 +26,7 @@ public static class SetupCommand
             "setup",
             "Full historical bulk load (option=4, start-only fromtime). Resumes from acquisition_state.last_filename via JVSkip.")
         {
-            connection, schema, operationalSchema, dataspec, sid, since, quiet,
+            connection, schema, operationalSchema, dataspec, sid, since, quiet, readerRole,
         };
 
         cmd.SetHandler(async ctx =>
@@ -40,7 +41,8 @@ public static class SetupCommand
                 Option: 4,
                 Fromtime: ctx.ParseResult.GetValueForOption(since)!,
                 Resume: ResumeBehavior.SetupIncremental,
-                Quiet: ctx.ParseResult.GetValueForOption(quiet))).ConfigureAwait(false);
+                Quiet: ctx.ParseResult.GetValueForOption(quiet),
+                ReaderRole: ctx.ParseResult.GetValueForOption(readerRole))).ConfigureAwait(false);
         });
 
         return cmd;
