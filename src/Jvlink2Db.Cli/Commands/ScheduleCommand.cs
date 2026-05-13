@@ -41,6 +41,7 @@ public static class ScheduleCommand
         var operationalSchema = ModeRunner.OperationalSchema();
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
+        var readerRole = ModeRunner.ReaderRole();
         var since = new Option<string?>("--since", "fromtime; required for weekly, optional for normal.");
         var daily = new Option<string?>("--daily", "Run once a day at HH:MM[:SS]. Mutually exclusive with --every.");
         var every = new Option<string?>("--every", "Run every <duration>. Accepts HH:MM:SS or shorthand Ns/Nm/Nh/Nd. Mutually exclusive with --daily.");
@@ -49,7 +50,7 @@ public static class ScheduleCommand
 
         var cmd = new Command("install", "Register or replace a scheduled task.")
         {
-            name, mode, connection, schema, operationalSchema, dataspec, sid, since, daily, every, always, password,
+            name, mode, connection, schema, operationalSchema, dataspec, sid, readerRole, since, daily, every, always, password,
         };
 
         cmd.SetHandler(ctx =>
@@ -82,7 +83,8 @@ public static class ScheduleCommand
                     OperationalSchema: ctx.ParseResult.GetValueForOption(operationalSchema)!,
                     Dataspec: ctx.ParseResult.GetValueForOption(dataspec)!,
                     Sid: ctx.ParseResult.GetValueForOption(sid)!,
-                    Since: ctx.ParseResult.GetValueForOption(since));
+                    Since: ctx.ParseResult.GetValueForOption(since),
+                    ReaderRole: ctx.ParseResult.GetValueForOption(readerRole));
                 args = ScheduleArgsBuilder.Build(spec);
             }
             catch (ArgumentException ex)

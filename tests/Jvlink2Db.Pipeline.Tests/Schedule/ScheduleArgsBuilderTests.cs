@@ -72,6 +72,26 @@ public class ScheduleArgsBuilderTests
         Assert.Contains("--connection \"Password=ab\\\"cd;Host=localhost\"", args, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Build_includes_reader_role_when_provided()
+    {
+        var spec = NewSpec("normal", since: null) with { ReaderRole = "mcp_reader" };
+
+        var args = ScheduleArgsBuilder.Build(spec);
+
+        Assert.Contains("--reader-role mcp_reader", args, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_omits_reader_role_when_null_or_empty()
+    {
+        var nullSpec = NewSpec("normal", since: null) with { ReaderRole = null };
+        var emptySpec = NewSpec("normal", since: null) with { ReaderRole = "" };
+
+        Assert.DoesNotContain("--reader-role", ScheduleArgsBuilder.Build(nullSpec), StringComparison.Ordinal);
+        Assert.DoesNotContain("--reader-role", ScheduleArgsBuilder.Build(emptySpec), StringComparison.Ordinal);
+    }
+
     private static ScheduleArgsBuilder.InstallSpec NewSpec(string mode, string? since) => new(
         Mode: mode,
         Connection: "Host=localhost;Username=postgres",

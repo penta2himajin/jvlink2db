@@ -17,6 +17,7 @@ public static class NormalCommand
         var dataspec = ModeRunner.Dataspec();
         var sid = ModeRunner.Sid();
         var quiet = ModeRunner.Quiet();
+        var readerRole = ModeRunner.ReaderRole();
 
         var since = new Option<string?>(
             name: "--since",
@@ -34,7 +35,7 @@ public static class NormalCommand
             "normal",
             "Incremental update (option=1). Each dataspec resumes from its own acquisition_state.last_fromtime if --since is omitted; saves the new last_fromtime on success. Pass --watch --interval <duration> to keep running on a recurring cadence.")
         {
-            connection, schema, operationalSchema, dataspec, sid, since, watch, interval, quiet,
+            connection, schema, operationalSchema, dataspec, sid, since, watch, interval, quiet, readerRole,
         };
 
         cmd.SetHandler(async ctx =>
@@ -89,7 +90,8 @@ public static class NormalCommand
                 Option: 1,
                 Fromtime: sinceArg,  // null → per-dataspec resume from acquisition_state
                 Resume: ResumeBehavior.NormalIncremental,
-                Quiet: ctx.ParseResult.GetValueForOption(quiet));
+                Quiet: ctx.ParseResult.GetValueForOption(quiet),
+                ReaderRole: ctx.ParseResult.GetValueForOption(readerRole));
 
             if (!watchValue)
             {

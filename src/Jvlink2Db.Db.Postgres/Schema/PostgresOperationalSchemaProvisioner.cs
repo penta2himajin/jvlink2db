@@ -24,12 +24,17 @@ public sealed class PostgresOperationalSchemaProvisioner : ISchemaProvisioner
 
     private readonly NpgsqlDataSource _dataSource;
     private readonly string _schemaName;
+    private readonly string? _readerRoleName;
 
-    public PostgresOperationalSchemaProvisioner(NpgsqlDataSource dataSource, string? schemaName = null)
+    public PostgresOperationalSchemaProvisioner(
+        NpgsqlDataSource dataSource,
+        string? schemaName = null,
+        string? readerRoleName = null)
     {
         ArgumentNullException.ThrowIfNull(dataSource);
         _dataSource = dataSource;
         _schemaName = schemaName ?? DefaultSchemaName;
+        _readerRoleName = string.IsNullOrWhiteSpace(readerRoleName) ? null : readerRoleName;
     }
 
     public string SchemaName => _schemaName;
@@ -37,22 +42,48 @@ public sealed class PostgresOperationalSchemaProvisioner : ISchemaProvisioner
     public async Task EnsureCreatedAsync(CancellationToken cancellationToken)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        var quoted = QuoteIdentifier(_schemaName);
+        var quotedSchema = QuoteIdentifier(_schemaName);
 
-        await using (var cmd = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS {quoted}", conn))
+        await using (var cmd = new NpgsqlCommand($"CREATE SCHEMA IF NOT EXISTS {quotedSchema}", conn))
         {
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await using (var cmd = new NpgsqlCommand($"SET search_path TO {quoted}", conn))
+        await using (var cmd = new NpgsqlCommand($"SET search_path TO {quotedSchema}", conn))
         {
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_readerRoleName is not null)
+        {
+            var quotedRole = QuoteIdentifier(_readerRoleName);
+
+            await using (var cmd = new NpgsqlCommand(
+                $"GRANT USAGE ON SCHEMA {quotedSchema} TO {quotedRole}", conn))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await using (var cmd = new NpgsqlCommand(
+                $"ALTER DEFAULT PRIVILEGES IN SCHEMA {quotedSchema} GRANT SELECT ON TABLES TO {quotedRole}",
+                conn))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         foreach (var resource in DiscoverDdlResources())
         {
             var ddl = ReadEmbeddedDdl(resource);
             await using var cmd = new NpgsqlCommand(ddl, conn);
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        if (_readerRoleName is not null)
+        {
+            var quotedRole = QuoteIdentifier(_readerRoleName);
+            await using var cmd = new NpgsqlCommand(
+                $"GRANT SELECT ON ALL TABLES IN SCHEMA {quotedSchema} TO {quotedRole}", conn);
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }

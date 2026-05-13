@@ -18,7 +18,8 @@ public static class ScheduleArgsBuilder
         string OperationalSchema,
         string Dataspec,
         string Sid,
-        string? Since);
+        string? Since,
+        string? ReaderRole = null);
 
     public static string Build(InstallSpec spec)
     {
@@ -44,6 +45,10 @@ public static class ScheduleArgsBuilder
         if (!string.IsNullOrEmpty(spec.Since))
         {
             AppendOption(sb, "--since", spec.Since);
+        }
+        if (!string.IsNullOrEmpty(spec.ReaderRole))
+        {
+            AppendOption(sb, "--reader-role", spec.ReaderRole);
         }
 
         return sb.ToString();
