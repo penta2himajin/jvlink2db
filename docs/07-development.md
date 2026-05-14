@@ -74,6 +74,52 @@ GitHub Actions, Windows runner, on every push and pull request:
 Releases are tagged `vMAJOR.MINOR.PATCH` and trigger a separate
 workflow that attaches the artefact to a GitHub Release.
 
+## Operations
+
+### Podman-hosted upstream PG — autostart on Windows
+
+When jvlink2db's target PostgreSQL runs in a Podman container
+(`jvlink2db-pg`, `postgres:16-alpine`, volume `jvlink2db-pg-data`),
+nothing brings the container back after a host reboot — scheduled
+`jvlink2db weekly`/`normal` runs then fail at connect, and any
+external reader on `localhost:5432` (e.g. a Cloudflare-Hyperdrive
+proxy) silently routes to whatever else happens to listen on the
+port.
+
+Register a logon-triggered Task Scheduler entry that boots the
+machine and the container:
+
+```powershell
+.\scripts\install-podman-autostart.ps1
+```
+
+The installer is idempotent (re-runs replace the existing entry),
+needs no admin elevation, and lands the task at
+`\jvlink2db\podman-autostart` so it colocates with the cron tasks
+that `jvlink2db schedule install` creates. Underlying worker:
+[`scripts/podman-autostart.ps1`](../scripts/podman-autostart.ps1).
+
+Verify without rebooting:
+
+```powershell
+Start-ScheduledTask -TaskName 'podman-autostart' -TaskPath '\jvlink2db\'
+Get-ScheduledTaskInfo -TaskName 'podman-autostart' -TaskPath '\jvlink2db\' |
+    Format-List LastRunTime, LastTaskResult
+# LastTaskResult = 0 → OK
+```
+
+Uninstall:
+
+```powershell
+Unregister-ScheduledTask -TaskName 'podman-autostart' -TaskPath '\jvlink2db\' -Confirm:$false
+```
+
+Caveat: "At logon" fires when the user logs on, so unattended
+reboots without a logon do not bring the stack up. WSL2 is per-user
+and there is no clean Windows-service equivalent; if you need full
+unattended uptime, consider auto-logon plus this task, or move the
+container to a different host.
+
 ## Contributions
 
 Issues and pull requests are welcome. Before opening a non-trivial PR,
